@@ -14,13 +14,138 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          current_level: number
+          current_rank: string
+          current_streak: number
+          current_xp: number
+          hunter_name: string | null
+          last_active_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_level?: number
+          current_rank?: string
+          current_streak?: number
+          current_xp?: number
+          hunter_name?: string | null
+          last_active_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_level?: number
+          current_rank?: string
+          current_streak?: number
+          current_xp?: number
+          hunter_name?: string | null
+          last_active_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      quest_logs: {
+        Row: {
+          checked_at: string
+          log_id: string
+          quest_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          checked_at?: string
+          log_id?: string
+          quest_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          checked_at?: string
+          log_id?: string
+          quest_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quest_logs_quest_id_fkey"
+            columns: ["quest_id"]
+            isOneToOne: false
+            referencedRelation: "quests"
+            referencedColumns: ["quest_id"]
+          },
+        ]
+      }
+      quests: {
+        Row: {
+          created_at: string
+          frequency_type: string
+          is_archived: boolean
+          quest_id: string
+          scheduled_days: boolean[]
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          frequency_type?: string
+          is_archived?: boolean
+          quest_id?: string
+          scheduled_days?: boolean[]
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          frequency_type?: string
+          is_archived?: boolean
+          quest_id?: string
+          scheduled_days?: boolean[]
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      step_logs: {
+        Row: {
+          log_id: string
+          logged_date: string
+          step_count: number
+          user_id: string
+        }
+        Insert: {
+          log_id?: string
+          logged_date?: string
+          step_count?: number
+          user_id: string
+        }
+        Update: {
+          log_id?: string
+          logged_date?: string
+          step_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      apply_inactivity_penalty: { Args: { p_user: string }; Returns: boolean }
+      complete_quest: { Args: { p_log_id: string }; Returns: Json }
+      midnight_reset_all: { Args: never; Returns: undefined }
+      rank_for_level: { Args: { lvl: number }; Returns: string }
+      spawn_daily_quest_logs: { Args: { p_user: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
