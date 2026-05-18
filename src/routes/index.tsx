@@ -5,12 +5,16 @@ import { ParticleBackground } from "@/components/aegis/ParticleBackground";
 import { StatusPanel } from "@/components/aegis/StatusPanel";
 import { ShadowMonster } from "@/components/aegis/ShadowMonster";
 import { BossHpBar } from "@/components/aegis/BossHpBar";
-import { QuestList, type QuestRow } from "@/components/aegis/QuestList";
+import { CategorizedQuests, type ActiveQuest } from "@/components/aegis/CategorizedQuests";
+import { QuestForms, type NewQuestPayload } from "@/components/aegis/QuestForms";
+import { StatusLog, type LogEntry } from "@/components/aegis/StatusLog";
+import { PermissionsMatrix } from "@/components/aegis/PermissionsMatrix";
+import { MidnightBanner } from "@/components/aegis/MidnightBanner";
+import { NavBar } from "@/components/aegis/NavBar";
 import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
-import { StepsChart } from "@/components/aegis/StepsChart";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
-import { LogOut, Footprints, Swords } from "lucide-react";
+import { LogOut, Swords, Footprints } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -32,13 +36,18 @@ interface Profile {
   last_active_date: string | null;
 }
 
+function nowStamp() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+}
+
 function SystemPage() {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [quests, setQuests] = useState<QuestRow[]>([]);
-  const [steps, setSteps] = useState<{ date: string; steps: number }[]>([]);
+  const [quests, setQuests] = useState<ActiveQuest[]>([]);
   const [stepInput, setStepInput] = useState("");
+  const [todaySteps, setTodaySteps] = useState(0);
   const [locked, setLocked] = useState(false);
   const [slashKey, setSlashKey] = useState(0);
   const [damageText, setDamageText] = useState<string | null>(null);
@@ -46,9 +55,15 @@ function SystemPage() {
   const [redFlashKey, setRedFlashKey] = useState(0);
   const [shakeKey, setShakeKey] = useState(0);
   const [levelUpTrigger, setLevelUpTrigger] = useState(0);
+  const [midnightTrigger, setMidnightTrigger] = useState(0);
   const [levelInfo, setLevelInfo] = useState<{ level: number; rank: string; rankChanged: boolean }>({ level: 1, rank: "E-RANK HUNTER", rankChanged: false });
   const [penalty, setPenalty] = useState<{ open: boolean; oldRank: string; newRank: string; newLevel: number }>({ open: false, oldRank: "", newRank: "", newLevel: 1 });
+  const [externalLogs, setExternalLogs] = useState<LogEntry[]>([]);
   const lastResetDayRef = useRef<string>(new Date().toDateString());
+
+  const pushLog = useCallback((kind: LogEntry["kind"], text: string) => {
+    setExternalLogs(prev => [...prev, { ts: nowStamp(), kind, text }]);
+  }, []);
 
   // ---- Auth gate ----
   useEffect(() => {
@@ -63,24 +78,18 @@ function SystemPage() {
     return () => subscription.unsubscribe();
   }, [nav]);
 
-  // ---- Initial load: profile, spawn today's logs, check inactivity, load quests & steps ----
+  // ---- Refresh ----
   const refresh = useCallback(async (uid: string) => {
-    // ensure today's pending logs exist
     await supabase.rpc("spawn_daily_quest_logs", { p_user: uid });
-
-    const [{ data: prof }, { data: logs }, { data: stepRows }] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10);
+    const [{ data: prof }, { data: logs }, { data: stepRow }] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", uid).single(),
       supabase
         .from("quest_logs")
-        .select("log_id, quest_id, status, quests(title)")
+        .select("log_id, quest_id, status, quests(title, category, target_steps, duration_minutes, difficulty)")
         .eq("user_id", uid)
-        .eq("checked_at", new Date().toISOString().slice(0, 10)),
-      supabase
-        .from("step_logs")
-        .select("logged_date, step_count")
-        .eq("user_id", uid)
-        .order("logged_date", { ascending: true })
-        .limit(30),
+        .eq("checked_at", today),
+      supabase.from("step_logs").select("step_count").eq("user_id", uid).eq("logged_date", today).maybeSingle(),
     ]);
 
     if (prof) setProfile(prof as Profile);
@@ -90,29 +99,25 @@ function SystemPage() {
         quest_id: l.quest_id,
         status: l.status,
         title: l.quests?.title ?? "UNKNOWN QUEST",
+        category: (l.quests?.category as ActiveQuest["category"]) ?? "daily",
+        target_steps: l.quests?.target_steps,
+        duration_minutes: l.quests?.duration_minutes,
+        difficulty: l.quests?.difficulty,
       }))
     );
-
-    // build 7 day trailing window
-    const days: { date: string; steps: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      const found = (stepRows || []).find((r: any) => r.logged_date === iso);
-      days.push({ date: iso, steps: found?.step_count ?? 0 });
-    }
-    setSteps(days);
+    setTodaySteps(stepRow?.step_count ?? 0);
   }, []);
 
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      // inactivity penalty check
       const { data: prevProf } = await supabase.from("profiles").select("current_rank,current_level").eq("user_id", userId).single();
       const { data: penaltyApplied } = await supabase.rpc("apply_inactivity_penalty", { p_user: userId });
       if (penaltyApplied) {
         sfxFailure();
         speak("System warning. Rank degradation protocol activated.");
+        setRedFlashKey(k => k + 1);
+        setShakeKey(k => k + 1);
         const { data: newProf } = await supabase.from("profiles").select("current_rank,current_level").eq("user_id", userId).single();
         setPenalty({
           open: true,
@@ -120,30 +125,43 @@ function SystemPage() {
           newRank: newProf?.current_rank ?? "",
           newLevel: newProf?.current_level ?? 1,
         });
+        pushLog("WARN", "Inactivity protocol triggered: -10 levels.");
       }
       await refresh(userId);
+      pushLog("SYS", "Daily quest matrix synchronized.");
     })();
-  }, [userId, refresh]);
+  }, [userId, refresh, pushLog]);
 
-  // ---- Local midnight reset watcher (client-side; server cron is the source of truth) ----
+  // ---- Midnight watcher ----
   useEffect(() => {
     if (!userId) return;
     const id = setInterval(() => {
       const today = new Date().toDateString();
       if (today !== lastResetDayRef.current) {
         lastResetDayRef.current = today;
-        // play failure sequence then refresh
         setRedFlashKey(k => k + 1);
         setShakeKey(k => k + 1);
         sfxFailure();
-        speak("Midnight dungeon reset. New quests deployed.");
-        setTimeout(() => refresh(userId), 800);
+        pushLog("WARN", "Midnight dungeon reset detected.");
+        setTimeout(() => {
+          refresh(userId);
+          setMidnightTrigger(k => k + 1);
+          pushLog("SYS", "Dungeon restored. New quests loaded.");
+        }, 900);
       }
     }, 30_000);
     return () => clearInterval(id);
-  }, [userId, refresh]);
+  }, [userId, refresh, pushLog]);
 
-  // ---- Quest completion pipeline ----
+  // ---- Auto-complete physical gates when steps hit target ----
+  useEffect(() => {
+    if (locked) return;
+    const due = quests.find(q => q.category === "physical" && q.status === "pending" && q.target_steps && todaySteps >= (q.target_steps || 0));
+    if (due) handleComplete(due.log_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todaySteps, quests]);
+
+  // ---- Completion pipeline ----
   const handleComplete = useCallback(async (log_id: string) => {
     if (!userId || locked) return;
     const target = quests.find(q => q.log_id === log_id);
@@ -158,59 +176,75 @@ function SystemPage() {
     setDamageText(`CRITICAL HIT! -${hpClip} HP`);
     sfxSlash();
 
-    // optimistic local
     setQuests(prev => prev.map(q => q.log_id === log_id ? { ...q, status: "completed" } : q));
 
     const { data, error } = await supabase.rpc("complete_quest", { p_log_id: log_id });
     if (error) {
-      // rollback
       setQuests(prev => prev.map(q => q.log_id === log_id ? { ...q, status: "pending" } : q));
       setLocked(false);
+      pushLog("WARN", `Quest commit failed: ${error.message}`);
       return;
     }
     const res = data as any;
     sfxQuestComplete();
+    pushLog("QUEST", `Cleared: ${target.title} (+${res?.xp_gain ?? 0} XP)`);
 
     if (res?.leveled_up) {
       setTimeout(() => {
         setLevelInfo({ level: res.new_level, rank: res.new_rank, rankChanged: !!res.rank_changed });
         setLevelUpTrigger(k => k + 1);
         sfxLevelUp();
-        speak(profile?.current_rank === "SHADOW MONARCH"
-          ? "Welcome back, Master. Aegis System quest resolved."
+        pushLog("LEVEL", `LEVEL UP → LV ${res.new_level} · ${res.new_rank}`);
+        speak(res.new_rank === "SHADOW MONARCH"
+          ? "Welcome back, Master. Quests resolved."
           : "Quest completed. Level up.");
       }, 350);
     } else {
       speak(profile?.current_rank === "SHADOW MONARCH"
-        ? "Welcome back, Master. Aegis System quest resolved."
+        ? "Welcome back, Master. Quest resolved."
         : "Quest completed.");
     }
 
     setTimeout(() => setLocked(false), 400);
     refresh(userId);
-  }, [userId, locked, quests, profile, refresh]);
+  }, [userId, locked, quests, profile, refresh, pushLog]);
 
   // ---- Quest CRUD ----
-  const addQuest = useCallback(async (title: string) => {
+  const createQuest = useCallback(async (p: NewQuestPayload) => {
     if (!userId) return;
-    const { data: q } = await supabase.from("quests").insert({
-      user_id: userId, title, frequency_type: "daily",
-      scheduled_days: [true, true, true, true, true, true, true],
+    const { data: q, error } = await supabase.from("quests").insert({
+      user_id: userId,
+      title: p.title,
+      category: p.category,
+      frequency_type: "daily",
+      scheduled_days: p.scheduled_days,
+      target_steps: p.target_steps ?? null,
+      duration_minutes: p.duration_minutes ?? null,
+      difficulty: p.difficulty ?? null,
+      midnight_reset: p.midnight_reset ?? true,
     }).select().single();
-    if (q) {
+    if (error || !q) {
+      pushLog("WARN", `Quest forge rejected: ${error?.message ?? "unknown"}`);
+      return;
+    }
+    // spawn today's log if scheduled today
+    const dow = ((new Date().getDay() + 6) % 7);
+    if (p.scheduled_days[dow]) {
       await supabase.from("quest_logs").insert({
         quest_id: q.quest_id, user_id: userId, status: "pending",
         checked_at: new Date().toISOString().slice(0, 10),
       });
-      refresh(userId);
     }
-  }, [userId, refresh]);
+    pushLog("SYS", `Forged ${p.category.toUpperCase()} quest: ${p.title}`);
+    refresh(userId);
+  }, [userId, refresh, pushLog]);
 
   const deleteQuest = useCallback(async (quest_id: string) => {
     if (!userId) return;
     await supabase.from("quests").delete().eq("quest_id", quest_id);
+    pushLog("SYS", "Quest purged from matrix.");
     refresh(userId);
-  }, [userId, refresh]);
+  }, [userId, refresh, pushLog]);
 
   // ---- Steps ----
   const logSteps = useCallback(async (e: React.FormEvent) => {
@@ -224,8 +258,9 @@ function SystemPage() {
       { onConflict: "user_id,logged_date" }
     );
     setStepInput("");
+    pushLog("SYS", `Step counter logged: ${n.toLocaleString()} steps.`);
     refresh(userId);
-  }, [userId, stepInput, refresh]);
+  }, [userId, stepInput, refresh, pushLog]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -233,13 +268,12 @@ function SystemPage() {
   }, [nav]);
 
   const completed = useMemo(() => quests.filter(q => q.status === "completed").length, [quests]);
+  const isMonarch = profile?.current_rank === "SHADOW MONARCH";
 
   if (!profile) {
     return (
       <main className="grid min-h-screen place-items-center">
-        <div className="font-display text-xs uppercase tracking-[0.5em] neon-text animate-pulse">
-          [ INITIALIZING SYSTEM... ]
-        </div>
+        <div className="font-display text-xs uppercase tracking-[0.5em] neon-text animate-pulse">[ INITIALIZING SYSTEM... ]</div>
       </main>
     );
   }
@@ -248,40 +282,37 @@ function SystemPage() {
     <main className="relative min-h-screen overflow-x-hidden pb-16">
       <ParticleBackground streak={profile.current_streak} />
 
-      {/* Purple combat flash */}
-      {flashKey > 0 && (
-        <div key={`pf-${flashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-purple" />
-      )}
-      {/* Red failure flash */}
-      {redFlashKey > 0 && (
-        <div key={`rf-${redFlashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-red" />
-      )}
+      {flashKey > 0 && <div key={`pf-${flashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-purple" />}
+      {redFlashKey > 0 && <div key={`rf-${redFlashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-red" />}
 
       <div key={`shake-${shakeKey}`} className={shakeKey > 0 ? "animate-shake" : ""}>
-        <header className="relative mx-auto flex max-w-5xl items-center justify-between px-4 pt-6 sm:px-6">
+        <header className="relative mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-6 sm:px-6">
           <div>
             <div className="text-[10px] uppercase tracking-[0.5em] cyan-text">[ AEGIS SYSTEM ]</div>
-            <div className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">SOLO QUEST · v1.0</div>
+            <div className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">PLAYER · {(profile.hunter_name || "MONARCH").toUpperCase()}</div>
           </div>
-          <button
-            onClick={signOut}
-            className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text"
-          >
+          <NavBar />
+          <button onClick={signOut} className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text">
             <LogOut className="h-3.5 w-3.5" /> EXIT
           </button>
         </header>
 
-        <section className="relative mx-auto mt-6 max-w-5xl px-4 sm:px-6">
-          <StatusPanel
-            hunterName={profile.hunter_name || "HUNTER"}
-            level={profile.current_level}
-            xp={profile.current_xp}
-            streak={profile.current_streak}
-            rank={profile.current_rank}
-          />
+        <section className="relative mx-auto mt-6 grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <StatusPanel
+              hunterName={profile.hunter_name || "MONARCH"}
+              level={profile.current_level}
+              xp={profile.current_xp}
+              streak={profile.current_streak}
+              rank={profile.current_rank}
+            />
+          </div>
+          <div className="space-y-4">
+            <PermissionsMatrix />
+          </div>
         </section>
 
-        <section className="relative mx-auto mt-8 max-w-5xl px-4 sm:px-6">
+        <section className="relative mx-auto mt-8 max-w-6xl px-4 sm:px-6">
           <div className="mb-3 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.5em] cyan-text">
             <Swords className="h-3.5 w-3.5" /> [ DAILY DUNGEON · ENGAGE BOSS ]
           </div>
@@ -291,20 +322,15 @@ function SystemPage() {
           </div>
         </section>
 
-        <section className="relative mx-auto mt-10 grid max-w-5xl gap-6 px-4 sm:px-6 lg:grid-cols-2">
-          <QuestList
-            rows={quests}
-            onComplete={handleComplete}
-            onDelete={deleteQuest}
-            onAdd={addQuest}
-            locked={locked}
-          />
+        <section className="relative mx-auto mt-10 grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-2">
+          <CategorizedQuests rows={quests} onComplete={handleComplete} onDelete={deleteQuest} locked={locked} />
 
           <div className="space-y-6">
-            <StepsChart data={steps} />
+            <QuestForms onCreate={createQuest} />
+
             <form onSubmit={logSteps} className="glass-panel angular-clip flex items-center gap-2 p-4">
               <Footprints className="h-4 w-4 cyan-text" />
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">LOG TODAY'S STEPS</div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">STEP SENSOR · TODAY ({todaySteps.toLocaleString()})</div>
               <input
                 inputMode="numeric"
                 value={stepInput}
@@ -312,32 +338,21 @@ function SystemPage() {
                 placeholder="0"
                 className="ml-auto w-24 border border-accent/40 bg-black/50 px-2 py-1 text-right font-display text-sm cyan-text outline-none focus:border-accent focus:shadow-[var(--glow-cyan)]"
               />
-              <button className="border border-accent/60 bg-accent/15 px-3 py-1 text-[10px] uppercase tracking-widest cyan-text hover:bg-accent/30">
-                LOG
-              </button>
+              <button className="border border-accent/60 bg-accent/15 px-3 py-1 text-[10px] uppercase tracking-widest cyan-text hover:bg-accent/30">LOG</button>
             </form>
+
+            <StatusLog external={externalLogs} />
           </div>
         </section>
 
-        <footer className="mx-auto mt-12 max-w-5xl px-4 text-center text-[10px] uppercase tracking-[0.4em] text-muted-foreground sm:px-6">
+        <footer className="mx-auto mt-12 max-w-6xl px-4 text-center text-[10px] uppercase tracking-[0.4em] text-muted-foreground sm:px-6">
           [ SINGLE PLAYER · NO LEADERBOARDS · ONLY YOU VS YOURSELF ]
         </footer>
       </div>
 
-      <LevelUpOverlay
-        trigger={levelUpTrigger}
-        newLevel={levelInfo.level}
-        newRank={levelInfo.rank}
-        rankChanged={levelInfo.rankChanged}
-      />
-
-      <SystemWarningModal
-        open={penalty.open}
-        oldRank={penalty.oldRank}
-        newRank={penalty.newRank}
-        newLevel={penalty.newLevel}
-        onClose={() => setPenalty(p => ({ ...p, open: false }))}
-      />
+      <MidnightBanner trigger={midnightTrigger} isMonarch={!!isMonarch} />
+      <LevelUpOverlay trigger={levelUpTrigger} newLevel={levelInfo.level} newRank={levelInfo.rank} rankChanged={levelInfo.rankChanged} />
+      <SystemWarningModal open={penalty.open} oldRank={penalty.oldRank} newRank={penalty.newRank} newLevel={penalty.newLevel} onClose={() => setPenalty(p => ({ ...p, open: false }))} />
     </main>
   );
 }
