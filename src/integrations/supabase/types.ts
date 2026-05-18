@@ -87,29 +87,44 @@ export type Database = {
       }
       quests: {
         Row: {
+          category: string
           created_at: string
+          difficulty: string | null
+          duration_minutes: number | null
           frequency_type: string
           is_archived: boolean
+          midnight_reset: boolean
           quest_id: string
           scheduled_days: boolean[]
+          target_steps: number | null
           title: string
           user_id: string
         }
         Insert: {
+          category?: string
           created_at?: string
+          difficulty?: string | null
+          duration_minutes?: number | null
           frequency_type?: string
           is_archived?: boolean
+          midnight_reset?: boolean
           quest_id?: string
           scheduled_days?: boolean[]
+          target_steps?: number | null
           title: string
           user_id: string
         }
         Update: {
+          category?: string
           created_at?: string
+          difficulty?: string | null
+          duration_minutes?: number | null
           frequency_type?: string
           is_archived?: boolean
+          midnight_reset?: boolean
           quest_id?: string
           scheduled_days?: boolean[]
+          target_steps?: number | null
           title?: string
           user_id?: string
         }
