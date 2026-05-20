@@ -90,6 +90,7 @@ function AuthPage() {
         </form>
 
         <button
+          type="button"
           onClick={() => { setMode(mode === "login" ? "signup" : "login"); setErr(null); }}
           className="mt-5 w-full text-center text-[11px] uppercase tracking-widest text-muted-foreground hover:cyan-text"
         >
