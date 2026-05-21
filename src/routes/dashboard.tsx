@@ -286,26 +286,57 @@ function StatTile({ value, label, tone }: { value: string; label: string; tone: 
   );
 }
 
-function BarChartNeon({ data, dense }: { data: { label: string; value: number }[]; dense?: boolean }) {
-  const max = Math.max(1, ...data.map(d => d.value));
+function BarChartNeon({ data, dense, mode }: { data: { label: string; completed: number; failed: number }[]; dense?: boolean; mode: "combined" | "split" }) {
+  const max = Math.max(1, ...data.map(d => mode === "split" ? Math.max(d.completed, d.failed) : d.completed + d.failed));
+  const completedBg = "linear-gradient(180deg, oklch(0.85 0.18 220), oklch(0.5 0.22 260))";
+  const failedBg = "linear-gradient(180deg, oklch(0.78 0.22 27), oklch(0.45 0.22 20))";
+  const completedGlow = "0 0 14px oklch(0.78 0.18 220 / 0.7)";
+  const failedGlow = "0 0 14px oklch(0.62 0.25 27 / 0.7)";
+  const clip = "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)";
+
   return (
     <div className="flex h-44 items-end gap-1">
       {data.map((d, i) => {
-        const h = (d.value / max) * 100;
         const showLabel = !dense || i % Math.ceil(data.length / 12) === 0;
+        const total = d.completed + d.failed;
         return (
           <div key={i} className="group flex flex-1 flex-col items-center gap-1">
             <div className="relative flex w-full flex-1 items-end">
-              <div className="relative w-full transition-all" style={{
-                height: `${h}%`,
-                background: "linear-gradient(180deg, oklch(0.85 0.18 220), oklch(0.5 0.22 260))",
-                boxShadow: d.value > 0 ? "0 0 14px oklch(0.78 0.18 220 / 0.7)" : "none",
-                clipPath: "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)",
-              }}>
-                {d.value > 0 && (
-                  <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.value}</div>
-                )}
-              </div>
+              {mode === "split" ? (
+                <div className="flex w-full items-end gap-[2px]">
+                  <div className="relative flex-1 transition-all" style={{
+                    height: `${(d.completed / max) * 100}%`, background: completedBg,
+                    boxShadow: d.completed > 0 ? completedGlow : "none", clipPath: clip,
+                  }}>
+                    {d.completed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}</div>}
+                  </div>
+                  <div className="relative flex-1 transition-all" style={{
+                    height: `${(d.failed / max) * 100}%`, background: failedBg,
+                    boxShadow: d.failed > 0 ? failedGlow : "none", clipPath: clip,
+                  }}>
+                    {d.failed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] danger-text opacity-0 transition-opacity group-hover:opacity-100">{d.failed}</div>}
+                  </div>
+                </div>
+              ) : (
+                <div className="relative w-full" style={{ height: `${(total / max) * 100}%` }}>
+                  {d.failed > 0 && (
+                    <div className="absolute inset-x-0 top-0 transition-all" style={{
+                      height: `${total > 0 ? (d.failed / total) * 100 : 0}%`,
+                      background: failedBg, boxShadow: failedGlow,
+                      clipPath: "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)",
+                    }} />
+                  )}
+                  {d.completed > 0 && (
+                    <div className="absolute inset-x-0 bottom-0 transition-all" style={{
+                      height: `${total > 0 ? (d.completed / total) * 100 : 0}%`,
+                      background: completedBg, boxShadow: completedGlow,
+                    }} />
+                  )}
+                  {total > 0 && (
+                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}/{d.failed}</div>
+                  )}
+                </div>
+              )}
             </div>
             <div className={`text-[9px] uppercase tracking-widest text-muted-foreground ${showLabel ? "" : "opacity-0"}`}>{d.label}</div>
           </div>
