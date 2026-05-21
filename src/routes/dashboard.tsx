@@ -39,6 +39,7 @@ function DashboardPage() {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("weekly");
+  const [mode, setMode] = useState<Mode>("combined");
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [quests, setQuests] = useState<QuestRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
