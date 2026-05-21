@@ -17,6 +17,7 @@ export const Route = createFileRoute("/dashboard")({
 
 type Range = "weekly" | "monthly" | "yearly";
 type Cat = "physical" | "mental" | "daily";
+type Mode = "combined" | "split";
 
 interface QuestRow { quest_id: string; category: Cat; scheduled_days: boolean[]; }
 interface LogRow { quest_id: string; status: string; checked_at: string; }
