@@ -84,35 +84,27 @@ function DashboardPage() {
     })();
   }, [userId, from, to]);
 
-  // Bar chart buckets (counts of completed quests)
+  // Bar chart buckets (counts of completed + failed quests)
   const buckets = useMemo(() => {
+    const make = (labels: string[]) => labels.map(l => ({ label: l, completed: 0, failed: 0 }));
+    let arr: { label: string; completed: number; failed: number }[];
+    let getIdx: (log: LogRow) => number;
     if (range === "weekly") {
-      const names = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-      const arr = Array.from({ length: 7 }, (_, i) => ({ label: names[i], value: 0 }));
-      for (const log of logs) {
-        if (log.status !== "completed") continue;
-        const d = new Date(log.checked_at + "T00:00:00");
-        const idx = (d.getDay() + 6) % 7;
-        arr[idx].value++;
-      }
-      return arr;
-    }
-    if (range === "monthly") {
+      arr = make(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
+      getIdx = (l) => (new Date(l.checked_at + "T00:00:00").getDay() + 6) % 7;
+    } else if (range === "monthly") {
       const dim = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
-      const arr = Array.from({ length: dim }, (_, i) => ({ label: String(i+1), value: 0 }));
-      for (const log of logs) {
-        if (log.status !== "completed") continue;
-        const day = parseInt(log.checked_at.slice(8, 10), 10);
-        if (arr[day-1]) arr[day-1].value++;
-      }
-      return arr;
+      arr = make(Array.from({ length: dim }, (_, i) => String(i+1)));
+      getIdx = (l) => parseInt(l.checked_at.slice(8, 10), 10) - 1;
+    } else {
+      arr = make(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]);
+      getIdx = (l) => parseInt(l.checked_at.slice(5, 7), 10) - 1;
     }
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const arr = months.map(m => ({ label: m, value: 0 }));
     for (const log of logs) {
-      if (log.status !== "completed") continue;
-      const m = parseInt(log.checked_at.slice(5, 7), 10) - 1;
-      arr[m].value++;
+      const i = getIdx(log);
+      if (i < 0 || i >= arr.length) continue;
+      if (log.status === "completed") arr[i].completed++;
+      else if (log.status === "failed") arr[i].failed++;
     }
     return arr;
   }, [logs, range, from]);
