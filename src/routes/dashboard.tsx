@@ -33,7 +33,12 @@ function startOfWeek(d: Date) { const x = new Date(d); const dow = (x.getDay() +
 function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function startOfYear(d: Date) { return new Date(d.getFullYear(), 0, 1); }
 function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
-function iso(d: Date) { return d.toISOString().slice(0, 10); }
+function iso(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function DashboardPage() {
   const nav = useNavigate();
