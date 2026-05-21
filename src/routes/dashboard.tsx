@@ -212,11 +212,26 @@ function DashboardPage() {
 
       <section className="relative mx-auto mt-6 grid max-w-5xl gap-6 px-4 sm:px-6 lg:grid-cols-2">
         <div className="glass-panel-cyan glass-panel angular-clip p-5 lg:col-span-2">
-          <div className="mb-3 text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ TELEMETRY ]</div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ TELEMETRY ]</div>
+            <div className="flex items-center gap-2 border border-primary/25 p-1">
+              {(["combined","split"] as Mode[]).map(m => (
+                <button key={m} onClick={() => setMode(m)} className={`px-2.5 py-1 font-display text-[9px] uppercase tracking-[0.3em] transition ${
+                  mode === m ? "bg-accent/20 cyan-text" : "text-muted-foreground hover:text-foreground"
+                }`}>{m === "combined" ? "TOTAL" : "SPLIT"}</button>
+              ))}
+            </div>
+          </div>
           <h3 className="mb-3 font-display text-lg cyan-text">
             {range === "weekly" ? "DAILY ACTIVITY" : range === "monthly" ? "DAILY ACTIVITY" : "MONTHLY ACTIVITY"}
           </h3>
-          <BarChartNeon data={buckets} dense={range !== "weekly"} />
+          {mode === "split" && (
+            <div className="mb-3 flex items-center gap-4 text-[9px] uppercase tracking-widest">
+              <span className="flex items-center gap-2"><span className="h-2 w-3" style={{ background: "oklch(0.78 0.18 220)", boxShadow: "0 0 8px oklch(0.78 0.18 220)" }} />COMPLETED</span>
+              <span className="flex items-center gap-2"><span className="h-2 w-3" style={{ background: "oklch(0.62 0.25 27)", boxShadow: "0 0 8px oklch(0.62 0.25 27)" }} />FAILED</span>
+            </div>
+          )}
+          <BarChartNeon data={buckets} dense={range !== "weekly"} mode={mode} />
         </div>
 
         <div className="glass-panel angular-clip p-5">
