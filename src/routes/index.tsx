@@ -289,6 +289,44 @@ function SystemPage() {
     nav({ to: "/auth" });
   }, [nav]);
 
+  const restartAccount = useCallback(async () => {
+    if (!userId) return;
+    const ok = window.confirm(
+      "RESTART SYSTEM?\n\nAll quests, logs, steps, levels, XP, and streaks will be PERMANENTLY ERASED.\nOnly your hunter name will remain.\n\nProceed?"
+    );
+    if (!ok) return;
+    setLocked(true);
+    try {
+      await Promise.all([
+        supabase.from("quest_logs").delete().eq("user_id", userId),
+        supabase.from("step_logs").delete().eq("user_id", userId),
+      ]);
+      await supabase.from("quests").delete().eq("user_id", userId);
+      await supabase
+        .from("profiles")
+        .update({
+          current_level: 1,
+          current_xp: 0,
+          current_streak: 0,
+          current_rank: "E-RANK HUNTER",
+          last_active_date: null,
+        })
+        .eq("user_id", userId);
+      setExternalLogs([]);
+      pushLog("WARN", "SYSTEM RESET · All progress wiped clean.");
+      await refresh(userId);
+    } finally {
+      setLocked(false);
+    }
+  }, [userId, refresh, pushLog]);
+
+  const inactiveDim = useMemo(() => {
+    if (!profile?.last_active_date) return true;
+    const last = new Date(profile.last_active_date + "T00:00:00");
+    const diffDays = (Date.now() - last.getTime()) / 86400000;
+    return diffDays >= 7;
+  }, [profile?.last_active_date]);
+
   const completed = useMemo(() => quests.filter(q => q.status === "completed").length, [quests]);
   const isMonarch = profile?.current_rank === "SHADOW MONARCH";
 
