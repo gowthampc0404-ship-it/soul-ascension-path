@@ -14,7 +14,7 @@ import { NavBar } from "@/components/aegis/NavBar";
 import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
-import { LogOut, Swords, Footprints } from "lucide-react";
+import { LogOut, Swords, Footprints, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -289,6 +289,44 @@ function SystemPage() {
     nav({ to: "/auth" });
   }, [nav]);
 
+  const restartAccount = useCallback(async () => {
+    if (!userId) return;
+    const ok = window.confirm(
+      "RESTART SYSTEM?\n\nAll quests, logs, steps, levels, XP, and streaks will be PERMANENTLY ERASED.\nOnly your hunter name will remain.\n\nProceed?"
+    );
+    if (!ok) return;
+    setLocked(true);
+    try {
+      await Promise.all([
+        supabase.from("quest_logs").delete().eq("user_id", userId),
+        supabase.from("step_logs").delete().eq("user_id", userId),
+      ]);
+      await supabase.from("quests").delete().eq("user_id", userId);
+      await supabase
+        .from("profiles")
+        .update({
+          current_level: 1,
+          current_xp: 0,
+          current_streak: 0,
+          current_rank: "E-RANK HUNTER",
+          last_active_date: null,
+        })
+        .eq("user_id", userId);
+      setExternalLogs([]);
+      pushLog("WARN", "SYSTEM RESET · All progress wiped clean.");
+      await refresh(userId);
+    } finally {
+      setLocked(false);
+    }
+  }, [userId, refresh, pushLog]);
+
+  const inactiveDim = useMemo(() => {
+    if (!profile?.last_active_date) return true;
+    const last = new Date(profile.last_active_date + "T00:00:00");
+    const diffDays = (Date.now() - last.getTime()) / 86400000;
+    return diffDays >= 7;
+  }, [profile?.last_active_date]);
+
   const completed = useMemo(() => quests.filter(q => q.status === "completed").length, [quests]);
   const isMonarch = profile?.current_rank === "SHADOW MONARCH";
 
@@ -314,9 +352,18 @@ function SystemPage() {
             <div className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">PLAYER · {(profile.hunter_name || "MONARCH").toUpperCase()}</div>
           </div>
           <NavBar />
-          <button onClick={signOut} className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text">
-            <LogOut className="h-3.5 w-3.5" /> EXIT
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={restartAccount}
+              className="flex items-center gap-2 border border-destructive/40 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive hover:danger-text"
+              title="Erase all progress (keeps your name)"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> RESTART
+            </button>
+            <button onClick={signOut} className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text">
+              <LogOut className="h-3.5 w-3.5" /> EXIT
+            </button>
+          </div>
         </header>
 
         <section className="relative mx-auto mt-6 grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-3">
@@ -339,7 +386,7 @@ function SystemPage() {
           <div className="mb-3 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.5em] cyan-text">
             <Swords className="h-3.5 w-3.5" /> [ DAILY DUNGEON · ENGAGE BOSS ]
           </div>
-          <ShadowMonster slashKey={slashKey} damageText={damageText} />
+          <ShadowMonster slashKey={slashKey} damageText={damageText} dimmed={inactiveDim} />
           <div className="mt-4">
             <BossHpBar completed={completed} total={quests.length} />
           </div>

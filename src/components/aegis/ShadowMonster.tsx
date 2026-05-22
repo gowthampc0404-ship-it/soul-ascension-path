@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 interface Props {
   slashKey: number;            // increments per attack
   damageText: string | null;   // floating text
+  dimmed?: boolean;            // reduce aura when user inactive 7+ days
 }
 
-export function ShadowMonster({ slashKey, damageText }: Props) {
+export function ShadowMonster({ slashKey, damageText, dimmed = false }: Props) {
   const [showSlash, setShowSlash] = useState(0);
   const [showDmg, setShowDmg] = useState<string | null>(null);
 
@@ -19,14 +20,17 @@ export function ShadowMonster({ slashKey, damageText }: Props) {
   }, [slashKey, damageText]);
 
   return (
-    <div className="relative mx-auto flex h-[280px] w-[280px] items-center justify-center sm:h-[340px] sm:w-[340px]">
+    <div
+      className="relative mx-auto flex h-[280px] w-[280px] items-center justify-center sm:h-[340px] sm:w-[340px] transition-opacity duration-700"
+      style={{ opacity: dimmed ? 0.35 : 1, filter: dimmed ? "grayscale(0.6) brightness(0.6)" : undefined }}
+    >
       {/* Outer ring */}
-      <div className="absolute inset-0 rounded-full border border-primary/30 animate-pulse-glow" />
+      <div className={`absolute inset-0 rounded-full border border-primary/30 ${dimmed ? "" : "animate-pulse-glow"}`} />
       <div className="absolute inset-4 rounded-full border border-primary/20" />
       <div className="absolute inset-8 rounded-full border border-accent/15" />
 
       {/* Shadow silhouette */}
-      <div className="relative h-[78%] w-[78%] animate-breathe">
+      <div className={`relative h-[78%] w-[78%] ${dimmed ? "" : "animate-breathe"}`}>
         <svg viewBox="0 0 200 220" className="absolute inset-0 h-full w-full drop-shadow-[0_0_30px_rgba(168,85,247,0.55)]">
           <defs>
             <radialGradient id="shadow-grad" cx="50%" cy="40%" r="60%">
