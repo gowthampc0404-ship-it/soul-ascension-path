@@ -304,30 +304,30 @@ function BarChartNeon({ data, dense, mode }: { data: { label: string; completed:
   const clip = "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)";
 
   return (
-    <div className="flex h-44 items-end gap-1">
+    <div className="flex h-44 items-stretch gap-1">
       {data.map((d, i) => {
         const showLabel = !dense || i % Math.ceil(data.length / 12) === 0;
         const total = d.completed + d.failed;
         return (
-          <div key={i} className="group flex flex-1 flex-col items-center gap-1">
-            <div className="relative flex w-full flex-1 items-end">
+          <div key={i} className="group flex h-full flex-1 flex-col items-center gap-1">
+            <div className="relative flex min-h-0 w-full flex-1 items-end">
               {mode === "split" ? (
-                <div className="flex w-full items-end gap-[2px]">
+                <div className="flex h-full w-full items-end gap-[2px]">
                   <div className="relative flex-1 transition-all" style={{
-                    height: `${(d.completed / max) * 100}%`, background: completedBg,
+                    height: `${(d.completed / max) * 100}%`, minHeight: d.completed > 0 ? "10px" : "0", background: completedBg,
                     boxShadow: d.completed > 0 ? completedGlow : "none", clipPath: clip,
                   }}>
                     {d.completed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}</div>}
                   </div>
                   <div className="relative flex-1 transition-all" style={{
-                    height: `${(d.failed / max) * 100}%`, background: failedBg,
+                    height: `${(d.failed / max) * 100}%`, minHeight: d.failed > 0 ? "10px" : "0", background: failedBg,
                     boxShadow: d.failed > 0 ? failedGlow : "none", clipPath: clip,
                   }}>
                     {d.failed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] danger-text opacity-0 transition-opacity group-hover:opacity-100">{d.failed}</div>}
                   </div>
                 </div>
               ) : (
-                <div className="relative w-full" style={{ height: `${(total / max) * 100}%` }}>
+                <div className="relative w-full transition-all" style={{ height: `${(total / max) * 100}%`, minHeight: total > 0 ? "10px" : "0" }}>
                   {d.failed > 0 && (
                     <div className="absolute inset-x-0 top-0 transition-all" style={{
                       height: `${total > 0 ? (d.failed / total) * 100 : 0}%`,
@@ -338,6 +338,7 @@ function BarChartNeon({ data, dense, mode }: { data: { label: string; completed:
                   {d.completed > 0 && (
                     <div className="absolute inset-x-0 bottom-0 transition-all" style={{
                       height: `${total > 0 ? (d.completed / total) * 100 : 0}%`,
+                      minHeight: d.completed > 0 ? "10px" : "0",
                       background: completedBg, boxShadow: completedGlow,
                     }} />
                   )}
