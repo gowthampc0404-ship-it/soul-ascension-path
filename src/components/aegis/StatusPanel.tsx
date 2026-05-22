@@ -1,4 +1,6 @@
 import { rankForLevel, nextRankAt } from "@/lib/ranks";
+import { Check, Pencil } from "lucide-react";
+import { useState } from "react";
 
 interface Props {
   hunterName: string;
@@ -6,17 +8,50 @@ interface Props {
   xp: number;
   streak: number;
   rank: string;
+  onRename?: (name: string) => Promise<void> | void;
 }
 
-export function StatusPanel({ hunterName, level, xp, streak, rank }: Props) {
+export function StatusPanel({ hunterName, level, xp, streak, rank, onRename }: Props) {
   const next = nextRankAt(level);
   const nextRank = next ? rankForLevel(next) : null;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(hunterName || "HUNTER");
+
+  const submitRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onRename) return;
+    await onRename(draft);
+    setEditing(false);
+  };
+
   return (
     <div className="glass-panel angular-clip relative p-5 sm:p-6 scanlines overflow-hidden">
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="text-xs uppercase tracking-[0.4em] text-muted-foreground">[ STATUS ]</div>
-          <h2 className="mt-1 font-display text-2xl neon-text sm:text-3xl">{hunterName?.toUpperCase() || "HUNTER"}</h2>
+          {editing ? (
+            <form onSubmit={submitRename} className="mt-2 flex max-w-sm items-center gap-2">
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={32}
+                autoFocus
+                className="min-w-0 flex-1 border border-primary/40 bg-black/50 px-3 py-2 font-display text-sm uppercase tracking-wider neon-text outline-none focus:border-primary focus:shadow-[var(--glow-neon)]"
+              />
+              <button type="submit" aria-label="save hunter name" className="grid h-9 w-9 place-items-center border border-accent/60 bg-accent/15 cyan-text transition hover:bg-accent/30">
+                <Check className="h-4 w-4" />
+              </button>
+            </form>
+          ) : (
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <h2 className="truncate font-display text-2xl neon-text sm:text-3xl">{hunterName?.toUpperCase() || "HUNTER"}</h2>
+              {onRename && (
+                <button onClick={() => { setDraft(hunterName || "HUNTER"); setEditing(true); }} aria-label="rename hunter" className="grid h-8 w-8 shrink-0 place-items-center border border-primary/30 text-muted-foreground transition hover:border-primary hover:neon-text">
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           <div className="mt-1 text-xs uppercase tracking-widest text-accent cyan-text">{rank}</div>
         </div>
         <div className="text-right">

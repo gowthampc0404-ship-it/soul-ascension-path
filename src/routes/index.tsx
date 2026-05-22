@@ -41,6 +41,13 @@ function nowStamp() {
   return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
 }
 
+function localIso(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function SystemPage() {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
@@ -81,7 +88,7 @@ function SystemPage() {
   // ---- Refresh ----
   const refresh = useCallback(async (uid: string) => {
     await supabase.rpc("spawn_daily_quest_logs", { p_user: uid });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localIso();
     const [{ data: prof }, { data: logs }, { data: stepRow }] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", uid).single(),
       supabase
@@ -232,7 +239,7 @@ function SystemPage() {
     if (p.scheduled_days[dow]) {
       await supabase.from("quest_logs").insert({
         quest_id: q.quest_id, user_id: userId, status: "pending",
-        checked_at: new Date().toISOString().slice(0, 10),
+        checked_at: localIso(),
       });
     }
     pushLog("SYS", `Forged ${p.category.toUpperCase()} quest: ${p.title}`);
@@ -252,7 +259,7 @@ function SystemPage() {
     if (!userId) return;
     const n = parseInt(stepInput, 10);
     if (!Number.isFinite(n) || n < 0) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localIso();
     await supabase.from("step_logs").upsert(
       { user_id: userId, step_count: n, logged_date: today },
       { onConflict: "user_id,logged_date" }
@@ -261,6 +268,21 @@ function SystemPage() {
     pushLog("SYS", `Step counter logged: ${n.toLocaleString()} steps.`);
     refresh(userId);
   }, [userId, stepInput, refresh, pushLog]);
+
+  const renameHunter = useCallback(async (name: string) => {
+    if (!userId) return;
+    const nextName = name.trim().slice(0, 32) || "HUNTER";
+    const { error } = await supabase
+      .from("profiles")
+      .update({ hunter_name: nextName })
+      .eq("user_id", userId);
+    if (error) {
+      pushLog("WARN", `Rename rejected: ${error.message}`);
+      return;
+    }
+    setProfile(prev => prev ? { ...prev, hunter_name: nextName } : prev);
+    pushLog("SYS", `Hunter name updated: ${nextName.toUpperCase()}`);
+  }, [userId, pushLog]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -305,6 +327,7 @@ function SystemPage() {
               xp={profile.current_xp}
               streak={profile.current_streak}
               rank={profile.current_rank}
+              onRename={renameHunter}
             />
           </div>
           <div className="space-y-4">
