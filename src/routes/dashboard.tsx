@@ -327,7 +327,7 @@ function BarChartNeon({ data, dense, mode }: { data: { label: string; completed:
                   </div>
                 </div>
               ) : (
-                <div className="relative w-full" style={{ height: `${(total / max) * 100}%` }}>
+                <div className="relative w-full transition-all" style={{ height: `${(total / max) * 100}%`, minHeight: total > 0 ? "10px" : "0" }}>
                   {d.failed > 0 && (
                     <div className="absolute inset-x-0 top-0 transition-all" style={{
                       height: `${total > 0 ? (d.failed / total) * 100 : 0}%`,
@@ -338,6 +338,7 @@ function BarChartNeon({ data, dense, mode }: { data: { label: string; completed:
                   {d.completed > 0 && (
                     <div className="absolute inset-x-0 bottom-0 transition-all" style={{
                       height: `${total > 0 ? (d.completed / total) * 100 : 0}%`,
+                      minHeight: d.completed > 0 ? "10px" : "0",
                       background: completedBg, boxShadow: completedGlow,
                     }} />
                   )}
