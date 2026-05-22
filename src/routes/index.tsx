@@ -352,9 +352,18 @@ function SystemPage() {
             <div className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">PLAYER · {(profile.hunter_name || "MONARCH").toUpperCase()}</div>
           </div>
           <NavBar />
-          <button onClick={signOut} className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text">
-            <LogOut className="h-3.5 w-3.5" /> EXIT
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={restartAccount}
+              className="flex items-center gap-2 border border-destructive/40 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive hover:danger-text"
+              title="Erase all progress (keeps your name)"
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> RESTART
+            </button>
+            <button onClick={signOut} className="flex items-center gap-2 border border-primary/30 px-3 py-2 text-[10px] uppercase tracking-widest text-muted-foreground transition hover:border-destructive/60 hover:danger-text">
+              <LogOut className="h-3.5 w-3.5" /> EXIT
+            </button>
+          </div>
         </header>
 
         <section className="relative mx-auto mt-6 grid max-w-6xl gap-6 px-4 sm:px-6 lg:grid-cols-3">
