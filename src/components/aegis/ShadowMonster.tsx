@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 interface Props {
   slashKey: number;            // increments per attack
   damageText: string | null;   // floating text
+  dimmed?: boolean;            // reduce aura when user inactive 7+ days
 }
 
 export function ShadowMonster({ slashKey, damageText }: Props) {
