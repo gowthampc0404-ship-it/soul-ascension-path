@@ -40,6 +40,11 @@ function iso(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function DashboardPage() {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
@@ -80,7 +85,7 @@ function DashboardPage() {
     (async () => {
       const [{ data: q }, { data: l }, { data: p }] = await Promise.all([
         supabase.from("quests").select("quest_id, category, scheduled_days").eq("user_id", userId).eq("is_archived", false),
-        supabase.from("quest_logs").select("quest_id, status, checked_at").eq("user_id", userId).gte("checked_at", iso(from)).lte("checked_at", iso(to)),
+        supabase.from("quest_logs").select("quest_id, status, checked_at").eq("user_id", userId).in("status", ["completed", "failed"]).gte("checked_at", iso(from)).lte("checked_at", iso(to)),
         supabase.from("profiles").select("current_streak, current_level, current_rank, hunter_name").eq("user_id", userId).single(),
       ]);
       setQuests((q || []) as QuestRow[]);
@@ -96,7 +101,7 @@ function DashboardPage() {
     let getIdx: (log: LogRow) => number;
     if (range === "weekly") {
       arr = make(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
-      getIdx = (l) => (new Date(l.checked_at + "T00:00:00").getDay() + 6) % 7;
+      getIdx = (l) => (parseLocalDate(l.checked_at).getDay() + 6) % 7;
     } else if (range === "monthly") {
       const dim = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
       arr = make(Array.from({ length: dim }, (_, i) => String(i+1)));
@@ -119,7 +124,6 @@ function DashboardPage() {
     const completed = logs.filter(l => l.status === "completed").length;
     const failed = logs.filter(l => l.status === "failed").length;
     const total = logs.length;
-    const remaining = Math.max(0, total - completed - failed);
     const completionPct = total === 0 ? 0 : Math.round((completed / total) * 100);
 
     // active units
@@ -129,7 +133,7 @@ function DashboardPage() {
       if (range === "yearly") activeSet.add(l.checked_at.slice(0, 7));
       else activeSet.add(l.checked_at);
     }
-    return { completed, failed, remaining, total, completionPct, active: activeSet.size };
+    return { completed, failed, total, completionPct, active: activeSet.size };
   }, [logs, range]);
 
   // Pie: completed/failed/remaining
@@ -138,7 +142,6 @@ function DashboardPage() {
     return [
       { key: "COMPLETED", value: stats.completed, pct: (stats.completed / t) * 100, color: "oklch(0.78 0.18 220)" },
       { key: "FAILED",    value: stats.failed,    pct: (stats.failed / t) * 100,    color: "oklch(0.62 0.25 27)" },
-      { key: "REMAINING", value: stats.remaining, pct: (stats.remaining / t) * 100, color: "oklch(0.55 0.22 300)" },
     ];
   }, [stats]);
 
@@ -208,9 +211,10 @@ function DashboardPage() {
         </div>
 
         {/* Stat tiles */}
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile value={`${stats.completionPct}%`} label="COMPLETION" tone="cyan" />
           <StatTile value={String(stats.completed)} label="CLEARED" tone="pink" />
+          <StatTile value={String(stats.failed)} label="FAILED" tone="danger" />
           <StatTile value={String(stats.active)} label={activeLabel} tone="white" />
         </div>
       </section>
