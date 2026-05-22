@@ -386,7 +386,7 @@ function SystemPage() {
           <div className="mb-3 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.5em] cyan-text">
             <Swords className="h-3.5 w-3.5" /> [ DAILY DUNGEON · ENGAGE BOSS ]
           </div>
-          <ShadowMonster slashKey={slashKey} damageText={damageText} />
+          <ShadowMonster slashKey={slashKey} damageText={damageText} dimmed={inactiveDim} />
           <div className="mt-4">
             <BossHpBar completed={completed} total={quests.length} />
           </div>
