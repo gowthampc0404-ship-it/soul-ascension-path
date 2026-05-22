@@ -285,8 +285,8 @@ function DashboardPage() {
   );
 }
 
-function StatTile({ value, label, tone }: { value: string; label: string; tone: "cyan" | "pink" | "white" }) {
-  const cls = tone === "cyan" ? "cyan-text" : tone === "pink" ? "danger-text" : "text-foreground";
+function StatTile({ value, label, tone }: { value: string; label: string; tone: "cyan" | "pink" | "danger" | "white" }) {
+  const cls = tone === "cyan" ? "cyan-text" : tone === "pink" || tone === "danger" ? "danger-text" : "text-foreground";
   return (
     <div className="glass-panel angular-clip p-4 text-center">
       <div className={`font-display text-2xl ${cls}`}>{value}</div>
