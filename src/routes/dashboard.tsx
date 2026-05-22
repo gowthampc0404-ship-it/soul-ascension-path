@@ -314,13 +314,13 @@ function BarChartNeon({ data, dense, mode }: { data: { label: string; completed:
               {mode === "split" ? (
                 <div className="flex h-full w-full items-end gap-[2px]">
                   <div className="relative flex-1 transition-all" style={{
-                    height: `${(d.completed / max) * 100}%`, background: completedBg,
+                    height: `${(d.completed / max) * 100}%`, minHeight: d.completed > 0 ? "10px" : "0", background: completedBg,
                     boxShadow: d.completed > 0 ? completedGlow : "none", clipPath: clip,
                   }}>
                     {d.completed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}</div>}
                   </div>
                   <div className="relative flex-1 transition-all" style={{
-                    height: `${(d.failed / max) * 100}%`, background: failedBg,
+                    height: `${(d.failed / max) * 100}%`, minHeight: d.failed > 0 ? "10px" : "0", background: failedBg,
                     boxShadow: d.failed > 0 ? failedGlow : "none", clipPath: clip,
                   }}>
                     {d.failed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] danger-text opacity-0 transition-opacity group-hover:opacity-100">{d.failed}</div>}
