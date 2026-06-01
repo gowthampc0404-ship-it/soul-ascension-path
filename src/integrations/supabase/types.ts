@@ -14,8 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      monsters: {
+        Row: {
+          aura_color: string
+          avatar_key: string
+          created_at: string
+          hp_multiplier: number
+          monster_id: string
+          name: string
+          rank_tier: string
+        }
+        Insert: {
+          aura_color?: string
+          avatar_key?: string
+          created_at?: string
+          hp_multiplier?: number
+          monster_id?: string
+          name: string
+          rank_tier: string
+        }
+        Update: {
+          aura_color?: string
+          avatar_key?: string
+          created_at?: string
+          hp_multiplier?: number
+          monster_id?: string
+          name?: string
+          rank_tier?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
+          active_monster_id: string | null
           created_at: string
           current_level: number
           current_rank: string
@@ -23,10 +54,13 @@ export type Database = {
           current_xp: number
           hunter_name: string | null
           last_active_date: string | null
+          last_ambush_summary: Json | null
+          pending_ambush_alert: boolean
           updated_at: string
           user_id: string
         }
         Insert: {
+          active_monster_id?: string | null
           created_at?: string
           current_level?: number
           current_rank?: string
@@ -34,10 +68,13 @@ export type Database = {
           current_xp?: number
           hunter_name?: string | null
           last_active_date?: string | null
+          last_ambush_summary?: Json | null
+          pending_ambush_alert?: boolean
           updated_at?: string
           user_id: string
         }
         Update: {
+          active_monster_id?: string | null
           created_at?: string
           current_level?: number
           current_rank?: string
@@ -45,6 +82,8 @@ export type Database = {
           current_xp?: number
           hunter_name?: string | null
           last_active_date?: string | null
+          last_ambush_summary?: Json | null
+          pending_ambush_alert?: boolean
           updated_at?: string
           user_id?: string
         }
@@ -87,8 +126,10 @@ export type Database = {
       }
       quests: {
         Row: {
+          ai_watch_enabled: boolean
           category: string
           created_at: string
+          current_progress_count: number
           difficulty: string | null
           duration_minutes: number | null
           frequency_type: string
@@ -96,13 +137,22 @@ export type Database = {
           midnight_reset: boolean
           quest_id: string
           scheduled_days: boolean[]
+          sensor_distance_enabled: boolean
+          strict_window_end: string | null
+          strict_window_start: string | null
+          target_distance_km: number | null
+          target_duration_mins: number | null
+          target_reps: number | null
           target_steps: number | null
+          task_type: string
           title: string
           user_id: string
         }
         Insert: {
+          ai_watch_enabled?: boolean
           category?: string
           created_at?: string
+          current_progress_count?: number
           difficulty?: string | null
           duration_minutes?: number | null
           frequency_type?: string
@@ -110,13 +160,22 @@ export type Database = {
           midnight_reset?: boolean
           quest_id?: string
           scheduled_days?: boolean[]
+          sensor_distance_enabled?: boolean
+          strict_window_end?: string | null
+          strict_window_start?: string | null
+          target_distance_km?: number | null
+          target_duration_mins?: number | null
+          target_reps?: number | null
           target_steps?: number | null
+          task_type?: string
           title: string
           user_id: string
         }
         Update: {
+          ai_watch_enabled?: boolean
           category?: string
           created_at?: string
+          current_progress_count?: number
           difficulty?: string | null
           duration_minutes?: number | null
           frequency_type?: string
@@ -124,7 +183,14 @@ export type Database = {
           midnight_reset?: boolean
           quest_id?: string
           scheduled_days?: boolean[]
+          sensor_distance_enabled?: boolean
+          strict_window_end?: string | null
+          strict_window_start?: string | null
+          target_distance_km?: number | null
+          target_duration_mins?: number | null
+          target_reps?: number | null
           target_steps?: number | null
+          task_type?: string
           title?: string
           user_id?: string
         }
@@ -156,8 +222,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acknowledge_ambush: { Args: { p_user: string }; Returns: Json }
       apply_inactivity_penalty: { Args: { p_user: string }; Returns: boolean }
       complete_quest: { Args: { p_log_id: string }; Returns: Json }
+      increment_rep_progress: {
+        Args: { p_delta: number; p_quest: string }
+        Returns: Json
+      }
       midnight_reset_all: { Args: never; Returns: undefined }
       rank_for_level: { Args: { lvl: number }; Returns: string }
       spawn_daily_quest_logs: { Args: { p_user: string }; Returns: undefined }
