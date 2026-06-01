@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { Activity, Brain, Calendar, Plus, AlertTriangle } from "lucide-react";
+import { Timer, Repeat, Infinity as InfinityIcon, Plus, AlertTriangle, Footprints } from "lucide-react";
 
 export type QuestCategory = "physical" | "mental" | "daily";
+export type TaskType = "time_based" | "rep_based" | "floating" | "distance";
+
 export interface NewQuestPayload {
   category: QuestCategory;
+  task_type: TaskType;
   title: string;
-  target_steps?: number | null;
-  duration_minutes?: number | null;
+  target_duration_mins?: number | null;
+  target_reps?: number | null;
+  target_distance_km?: number | null;
   difficulty?: string | null;
   midnight_reset?: boolean;
-  scheduled_days: boolean[]; // length 7, Mon..Sun
+  ai_watch_enabled?: boolean;
+  sensor_distance_enabled?: boolean;
+  strict_window_start?: string | null;
+  strict_window_end?: string | null;
+  scheduled_days: boolean[];
 }
 
 interface Props {
@@ -18,25 +26,26 @@ interface Props {
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 const DIFFS = ["E-RANK", "D-RANK", "C-RANK", "B-RANK", "A-RANK", "S-RANK", "SS-RANK"];
+const WAKE_KEYWORDS = ["wake up", "wake-up", "wakeup", "எழுந்திருத்தல்"];
 
 export function QuestForms({ onCreate }: Props) {
-  const [tab, setTab] = useState<QuestCategory>("physical");
+  const [tab, setTab] = useState<TaskType>("time_based");
   return (
     <div className="glass-panel angular-clip p-5 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ MODULAR QUEST FORGE ]</div>
-          <h3 className="mt-0.5 font-display text-lg neon-text">INPUT MATRIX</h3>
-        </div>
+      <div className="mb-4">
+        <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ MODULAR QUEST FORGE ]</div>
+        <h3 className="mt-0.5 font-display text-lg neon-text">INPUT MATRIX</h3>
       </div>
-      <div className="mb-4 grid grid-cols-3 gap-2">
-        <TabBtn active={tab === "physical"} onClick={() => setTab("physical")} color="neon" icon={<Activity className="h-3.5 w-3.5" />}>PHYSICAL</TabBtn>
-        <TabBtn active={tab === "mental"} onClick={() => setTab("mental")} color="cyan" icon={<Brain className="h-3.5 w-3.5" />}>MENTAL</TabBtn>
-        <TabBtn active={tab === "daily"} onClick={() => setTab("daily")} color="warn" icon={<Calendar className="h-3.5 w-3.5" />}>DAILY RAID</TabBtn>
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <TabBtn active={tab === "time_based"} onClick={() => setTab("time_based")} color="cyan" icon={<Timer className="h-3.5 w-3.5" />}>TIMER</TabBtn>
+        <TabBtn active={tab === "rep_based"} onClick={() => setTab("rep_based")} color="neon" icon={<Repeat className="h-3.5 w-3.5" />}>REPS</TabBtn>
+        <TabBtn active={tab === "distance"} onClick={() => setTab("distance")} color="warn" icon={<Footprints className="h-3.5 w-3.5" />}>DISTANCE</TabBtn>
+        <TabBtn active={tab === "floating"} onClick={() => setTab("floating")} color="cyan" icon={<InfinityIcon className="h-3.5 w-3.5" />}>FLOATING</TabBtn>
       </div>
-      {tab === "physical" && <PhysicalForm onCreate={onCreate} />}
-      {tab === "mental" && <MentalForm onCreate={onCreate} />}
-      {tab === "daily" && <DailyForm onCreate={onCreate} />}
+      {tab === "time_based" && <TimeForm onCreate={onCreate} />}
+      {tab === "rep_based" && <RepForm onCreate={onCreate} />}
+      {tab === "distance" && <DistanceForm onCreate={onCreate} />}
+      {tab === "floating" && <FloatingForm onCreate={onCreate} />}
     </div>
   );
 }
@@ -56,6 +65,19 @@ function TabBtn({ active, onClick, color, icon, children }: { active: boolean; o
   );
 }
 
+function CategoryPicker({ value, onChange }: { value: QuestCategory; onChange: (c: QuestCategory) => void }) {
+  const opts: QuestCategory[] = ["physical", "mental", "daily"];
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      {opts.map(c => (
+        <button key={c} type="button" onClick={() => onChange(c)} className={`border px-2 py-1.5 font-display text-[9px] uppercase tracking-widest transition ${value === c ? "border-accent bg-accent/15 cyan-text" : "border-primary/20 text-muted-foreground hover:border-primary/50"}`}>
+          {c}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DayMatrix({ value, onChange, color }: { value: boolean[]; onChange: (v: boolean[]) => void; color: "neon" | "cyan" | "warn" }) {
   const onClr = color === "neon" ? "border-primary bg-primary/30 neon-text" : color === "cyan" ? "border-accent bg-accent/30 cyan-text" : "border-destructive bg-destructive/30 danger-text";
   return (
@@ -63,12 +85,8 @@ function DayMatrix({ value, onChange, color }: { value: boolean[]; onChange: (v:
       <div className="mb-1 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">SCHEDULED DAYS</div>
       <div className="grid grid-cols-7 gap-1">
         {DAYS.map((d, i) => (
-          <button
-            type="button"
-            key={d}
-            onClick={() => { const v = [...value]; v[i] = !v[i]; onChange(v); }}
-            className={`border px-1 py-2 font-display text-[10px] tracking-widest transition ${value[i] ? onClr : "border-primary/20 text-muted-foreground hover:border-primary/50"}`}
-          >{d}</button>
+          <button type="button" key={d} onClick={() => { const v = [...value]; v[i] = !v[i]; onChange(v); }}
+            className={`border px-1 py-2 font-display text-[10px] tracking-widest transition ${value[i] ? onClr : "border-primary/20 text-muted-foreground hover:border-primary/50"}`}>{d}</button>
         ))}
       </div>
     </div>
@@ -86,14 +104,14 @@ function FieldShell({ label, children, color = "neon" }: { label: string; childr
   );
 }
 
-function SubmitBtn({ color, children, disabled }: { color: "neon" | "cyan" | "warn"; children: React.ReactNode; disabled?: boolean }) {
+function SubmitBtn({ color, children }: { color: "neon" | "cyan" | "warn"; children: React.ReactNode }) {
   const cls = color === "neon"
     ? "border-primary/70 bg-primary/15 neon-text hover:bg-primary/30 hover:shadow-[var(--glow-neon)]"
     : color === "cyan"
     ? "border-accent/70 bg-accent/15 cyan-text hover:bg-accent/30 hover:shadow-[var(--glow-cyan)]"
     : "border-destructive/70 bg-destructive/15 danger-text hover:bg-destructive/30 hover:shadow-[var(--glow-red)]";
   return (
-    <button disabled={disabled} className={`mt-1 flex w-full items-center justify-center gap-2 border px-4 py-3 font-display text-xs uppercase tracking-[0.4em] transition disabled:opacity-40 ${cls}`}>
+    <button className={`mt-1 flex w-full items-center justify-center gap-2 border px-4 py-3 font-display text-xs uppercase tracking-[0.4em] transition ${cls}`}>
       <Plus className="h-3.5 w-3.5" />{children}
     </button>
   );
@@ -108,106 +126,170 @@ function ErrorLine({ msg }: { msg: string | null }) {
   );
 }
 
-function PhysicalForm({ onCreate }: Props) {
+function TimeForm({ onCreate }: Props) {
   const [name, setName] = useState("");
-  const [steps, setSteps] = useState("");
-  const [days, setDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
+  const [dur, setDur] = useState("");
+  const [diff, setDiff] = useState("A-RANK");
+  const [cat, setCat] = useState<QuestCategory>("mental");
+  const [days, setDays] = useState<boolean[]>([true, true, true, true, true, true, true]);
+  const [winStart, setWinStart] = useState("");
+  const [winEnd, setWinEnd] = useState("");
   const [err, setErr] = useState<string | null>(null);
+
+  const isWake = WAKE_KEYWORDS.some(k => name.toLowerCase().includes(k));
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setErr("VALIDATION FAILED: NAME REQUIRED");
-    const n = parseInt(steps, 10);
-    if (!Number.isFinite(n) || n <= 0) return setErr("VALIDATION FAILED: STEP TARGET MUST BE > 0");
+    const d = parseInt(dur, 10);
+    if (!Number.isFinite(d) || d <= 0) return setErr("VALIDATION FAILED: DURATION REQUIRED");
     if (!days.some(Boolean)) return setErr("VALIDATION FAILED: AT LEAST 1 SCHEDULED DAY");
     setErr(null);
-    await onCreate({ category: "physical", title: name.trim(), target_steps: n, scheduled_days: days });
-    setName(""); setSteps("");
+    await onCreate({
+      category: cat, task_type: "time_based",
+      title: `${name.trim()} · ${d}m`,
+      target_duration_mins: d, difficulty: diff, scheduled_days: days,
+      strict_window_start: isWake && winStart ? winStart : null,
+      strict_window_end: isWake && winEnd ? winEnd : null,
+    });
+    setName(""); setDur(""); setWinStart(""); setWinEnd("");
   };
-  return (
-    <form onSubmit={submit} className="space-y-3">
-      <FieldShell label="GATE NAME" color="neon">
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="10K STEPS GATE" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
-      </FieldShell>
-      <FieldShell label="TARGET STEP COUNT" color="neon">
-        <input inputMode="numeric" value={steps} onChange={(e) => setSteps(e.target.value.replace(/[^0-9]/g, ""))} placeholder="10000" className="w-full bg-transparent px-3 py-2 font-display text-sm neon-text outline-none placeholder:text-muted-foreground/50" />
-      </FieldShell>
-      <DayMatrix value={days} onChange={setDays} color="neon" />
-      <ErrorLine msg={err} />
-      <SubmitBtn color="neon">DEPLOY GATE</SubmitBtn>
-    </form>
-  );
-}
 
-function MentalForm({ onCreate }: Props) {
-  const [topic, setTopic] = useState("");
-  const [duration, setDuration] = useState("");
-  const [diff, setDiff] = useState("A-RANK");
-  const [days, setDays] = useState<boolean[]>([true, true, true, true, true, true, true]);
-  const [err, setErr] = useState<string | null>(null);
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!topic.trim()) return setErr("VALIDATION FAILED: TOPIC REQUIRED");
-    const d = parseInt(duration, 10);
-    if (!Number.isFinite(d) || d <= 0) return setErr("VALIDATION FAILED: FOCUS DURATION REQUIRED");
-    if (!days.some(Boolean)) return setErr("VALIDATION FAILED: AT LEAST 1 SCHEDULED DAY");
-    setErr(null);
-    await onCreate({ category: "mental", title: `${topic.trim()} · ${d}m`, duration_minutes: d, difficulty: diff, scheduled_days: days });
-    setTopic(""); setDuration("");
-  };
   return (
     <form onSubmit={submit} className="space-y-3">
-      <FieldShell label="FOCUS TOPIC" color="cyan">
-        <input value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={60} placeholder="PYTHON CODING · EXAM PREP" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
+      <CategoryPicker value={cat} onChange={setCat} />
+      <FieldShell label="TASK NAME" color="cyan">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="DEEP WORK · MEDITATION" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
       </FieldShell>
       <div className="grid grid-cols-2 gap-3">
         <FieldShell label="DURATION (MIN)" color="cyan">
-          <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/[^0-9]/g, ""))} placeholder="60" className="w-full bg-transparent px-3 py-2 font-display text-sm cyan-text outline-none" />
+          <input inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value.replace(/[^0-9]/g, ""))} placeholder="60" className="w-full bg-transparent px-3 py-2 font-display text-sm cyan-text outline-none" />
         </FieldShell>
-        <FieldShell label="DIFFICULTY" color="cyan">
+        <FieldShell label="DANGER RANK" color="cyan">
           <select value={diff} onChange={(e) => setDiff(e.target.value)} className="w-full bg-transparent px-3 py-2 font-display text-sm cyan-text outline-none">
             {DIFFS.map(d => <option key={d} value={d} className="bg-black">{d}</option>)}
           </select>
         </FieldShell>
       </div>
+      {isWake && (
+        <div className="border border-destructive/40 bg-destructive/5 p-2.5">
+          <div className="mb-1.5 text-[9px] uppercase tracking-widest danger-text">[ STRICT WAKE-WINDOW · BEFORE 6:30 AM ]</div>
+          <div className="grid grid-cols-2 gap-2">
+            <input type="time" value={winStart} onChange={(e) => setWinStart(e.target.value)} className="bg-black/60 border border-destructive/40 px-2 py-1.5 text-xs danger-text outline-none" />
+            <input type="time" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} max="06:30" className="bg-black/60 border border-destructive/40 px-2 py-1.5 text-xs danger-text outline-none" />
+          </div>
+        </div>
+      )}
       <DayMatrix value={days} onChange={setDays} color="cyan" />
       <ErrorLine msg={err} />
-      <SubmitBtn color="cyan">DEPLOY DUNGEON</SubmitBtn>
+      <SubmitBtn color="cyan">DEPLOY TIMER QUEST</SubmitBtn>
     </form>
   );
 }
 
-function DailyForm({ onCreate }: Props) {
+function RepForm({ onCreate }: Props) {
   const [name, setName] = useState("");
-  const [reset, setReset] = useState(true);
+  const [reps, setReps] = useState("");
+  const [aiWatch, setAiWatch] = useState(false);
+  const [cat, setCat] = useState<QuestCategory>("physical");
+  const [days, setDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
   const [err, setErr] = useState<string | null>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return setErr("VALIDATION FAILED: ROUTINE NAME REQUIRED");
+    if (!name.trim()) return setErr("VALIDATION FAILED: NAME REQUIRED");
+    const n = parseInt(reps, 10);
+    if (!Number.isFinite(n) || n <= 0) return setErr("VALIDATION FAILED: TARGET REPS > 0");
+    if (!days.some(Boolean)) return setErr("VALIDATION FAILED: AT LEAST 1 DAY");
     setErr(null);
-    await onCreate({
-      category: "daily",
-      title: name.trim(),
-      midnight_reset: reset,
-      scheduled_days: [true, true, true, true, true, true, true],
-    });
+    await onCreate({ category: cat, task_type: "rep_based", title: `${name.trim()} · ${n} reps`, target_reps: n, ai_watch_enabled: aiWatch, scheduled_days: days });
+    setName(""); setReps("");
+  };
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <CategoryPicker value={cat} onChange={setCat} />
+      <FieldShell label="TASK NAME" color="neon">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="PUSH-UPS · DRINK WATER" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
+      </FieldShell>
+      <FieldShell label="TARGET REPS" color="neon">
+        <input inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))} placeholder="50" className="w-full bg-transparent px-3 py-2 font-display text-sm neon-text outline-none" />
+      </FieldShell>
+      <label className="flex cursor-pointer items-center justify-between border border-primary/40 bg-black/50 px-3 py-2.5">
+        <div>
+          <div className="font-display text-xs uppercase tracking-widest neon-text">ACTIVATE AI WATCH</div>
+          <div className="text-[9px] uppercase tracking-widest text-muted-foreground">CAMERA POSE COUNTING (PHASE 4)</div>
+        </div>
+        <button type="button" onClick={() => setAiWatch(!aiWatch)} className={`relative h-6 w-11 border transition ${aiWatch ? "border-primary bg-primary/30" : "border-muted bg-black"}`}>
+          <span className={`absolute top-0.5 h-4 w-4 transition-all ${aiWatch ? "left-6 bg-primary shadow-[var(--glow-neon)]" : "left-0.5 bg-muted"}`} />
+        </button>
+      </label>
+      <DayMatrix value={days} onChange={setDays} color="neon" />
+      <ErrorLine msg={err} />
+      <SubmitBtn color="neon">DEPLOY REP QUEST</SubmitBtn>
+    </form>
+  );
+}
+
+function DistanceForm({ onCreate }: Props) {
+  const [name, setName] = useState("");
+  const [km, setKm] = useState("");
+  const [sensor, setSensor] = useState(false);
+  const [cat] = useState<QuestCategory>("physical");
+  const [days, setDays] = useState<boolean[]>([true, false, true, false, true, false, false]);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return setErr("VALIDATION FAILED: NAME REQUIRED");
+    const n = parseFloat(km);
+    if (!Number.isFinite(n) || n <= 0) return setErr("VALIDATION FAILED: TARGET KM > 0");
+    if (!days.some(Boolean)) return setErr("VALIDATION FAILED: AT LEAST 1 DAY");
+    setErr(null);
+    await onCreate({ category: cat, task_type: "distance", title: `${name.trim()} · ${n} km`, target_distance_km: n, sensor_distance_enabled: sensor, scheduled_days: days });
+    setName(""); setKm("");
+  };
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <FieldShell label="ACTIVITY" color="warn">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="RUNNING · CYCLING" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
+      </FieldShell>
+      <FieldShell label="TARGET KM" color="warn">
+        <input inputMode="decimal" value={km} onChange={(e) => setKm(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="5.0" className="w-full bg-transparent px-3 py-2 font-display text-sm danger-text outline-none" />
+      </FieldShell>
+      <label className="flex cursor-pointer items-center justify-between border border-destructive/40 bg-black/50 px-3 py-2.5">
+        <div>
+          <div className="font-display text-xs uppercase tracking-widest danger-text">SENSOR TRACKING</div>
+          <div className="text-[9px] uppercase tracking-widest text-muted-foreground">GPS / PEDOMETER (PHASE 4)</div>
+        </div>
+        <button type="button" onClick={() => setSensor(!sensor)} className={`relative h-6 w-11 border transition ${sensor ? "border-destructive bg-destructive/30" : "border-muted bg-black"}`}>
+          <span className={`absolute top-0.5 h-4 w-4 transition-all ${sensor ? "left-6 bg-destructive shadow-[var(--glow-red)]" : "left-0.5 bg-muted"}`} />
+        </button>
+      </label>
+      <DayMatrix value={days} onChange={setDays} color="warn" />
+      <ErrorLine msg={err} />
+      <SubmitBtn color="warn">DEPLOY DISTANCE QUEST</SubmitBtn>
+    </form>
+  );
+}
+
+function FloatingForm({ onCreate }: Props) {
+  const [name, setName] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return setErr("VALIDATION FAILED: NAME REQUIRED");
+    setErr(null);
+    await onCreate({ category: "daily", task_type: "floating", title: name.trim(), midnight_reset: false, scheduled_days: [true, true, true, true, true, true, true] });
     setName("");
   };
   return (
     <form onSubmit={submit} className="space-y-3">
-      <FieldShell label="ROUTINE NAME" color="warn">
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="DRINK 2L WATER" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
+      <div className="border border-accent/30 bg-accent/5 p-2.5 text-[10px] uppercase tracking-widest cyan-text">
+        [ INFINITE DUNGEON · NO DEADLINE · ON-DEMAND ]
+      </div>
+      <FieldShell label="QUEST NAME" color="cyan">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="JOURNAL · READ A CHAPTER" className="w-full bg-transparent px-3 py-2 font-display text-sm uppercase tracking-wider outline-none placeholder:text-muted-foreground/50" />
       </FieldShell>
-      <label className="flex cursor-pointer items-center justify-between border border-destructive/40 bg-black/50 px-3 py-2.5">
-        <div>
-          <div className="font-display text-xs uppercase tracking-widest danger-text">MIDNIGHT RESET</div>
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">FAILS AT 00:00 IF UNCOMPLETED</div>
-        </div>
-        <button type="button" onClick={() => setReset(!reset)} className={`relative h-6 w-11 border transition ${reset ? "border-destructive bg-destructive/30" : "border-muted bg-black"}`}>
-          <span className={`absolute top-0.5 h-4 w-4 transition-all ${reset ? "left-6 bg-destructive shadow-[var(--glow-red)]" : "left-0.5 bg-muted"}`} />
-        </button>
-      </label>
       <ErrorLine msg={err} />
-      <SubmitBtn color="warn">DEPLOY DAILY RAID</SubmitBtn>
+      <SubmitBtn color="cyan">DEPLOY FLOATING QUEST</SubmitBtn>
     </form>
   );
 }
