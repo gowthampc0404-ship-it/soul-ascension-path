@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, Brain, Calendar, Check, Skull, Trash2, Play, Pause, RotateCcw, Minus, Plus, Infinity as InfinityIcon, Timer as TimerIcon, Footprints } from "lucide-react";
+import { Activity, Brain, Calendar, Check, Skull, Trash2, Play, Pause, RotateCcw, Minus, Plus, Infinity as InfinityIcon, Timer as TimerIcon, Footprints, Camera, MapPin } from "lucide-react";
+import { CameraWatch } from "./CameraWatch";
+import { useDistanceTracker } from "@/lib/distance";
 import type { QuestCategory, TaskType } from "./QuestForms";
 
 export interface ActiveQuest {
