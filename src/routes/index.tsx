@@ -164,6 +164,7 @@ function SystemPage() {
           date: sum.date ?? "",
         });
         pushLog("WARN", "NIGHT AMBUSH · Dungeon boss counter-attacked while you rested.");
+        notify("Night Ambush", `${sum.failed_count ?? 0} quest(s) failed. -${sum.hp_lost ?? 0} HP, -${sum.xp_lost ?? 0} XP.`);
         await supabase.rpc("acknowledge_ambush", { p_user: userId });
       }
 
