@@ -112,7 +112,11 @@ function QuestRow({ r, borderCls, onComplete, onDelete, onRepDelta, locked }: { 
       ) : null}
 
       {r.status === "pending" && tt === "rep_based" && r.target_reps && onRepDelta ? (
-        <RepStrip quest_id={r.quest_id} current={r.current_progress_count ?? 0} target={r.target_reps} onDelta={onRepDelta} log_id={r.log_id} onComplete={onComplete} locked={locked} />
+        <RepStrip quest_id={r.quest_id} title={r.title} current={r.current_progress_count ?? 0} target={r.target_reps} onDelta={onRepDelta} log_id={r.log_id} onComplete={onComplete} locked={locked} />
+      ) : null}
+
+      {r.status === "pending" && tt === "distance" && r.target_distance_km ? (
+        <DistanceStrip target={r.target_distance_km} log_id={r.log_id} onComplete={onComplete} locked={locked} />
       ) : null}
     </li>
   );
