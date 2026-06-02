@@ -14,6 +14,7 @@ import { NavBar } from "@/components/aegis/NavBar";
 import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
+import { requestNotificationPermission, notify } from "@/lib/notifications";
 import { LogOut, Swords, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -163,6 +164,7 @@ function SystemPage() {
           date: sum.date ?? "",
         });
         pushLog("WARN", "NIGHT AMBUSH · Dungeon boss counter-attacked while you rested.");
+        notify("Night Ambush", `${sum.failed_count ?? 0} quest(s) failed. -${sum.hp_lost ?? 0} HP, -${sum.xp_lost ?? 0} XP.`);
         await supabase.rpc("acknowledge_ambush", { p_user: userId });
       }
 
@@ -183,6 +185,10 @@ function SystemPage() {
       }
       await refresh(userId);
       pushLog("SYS", "Daily quest matrix synchronized.");
+      // Phase 4: request notification permission once per session
+      requestNotificationPermission().then((ok) => {
+        if (ok) pushLog("SYS", "Notification channel armed.");
+      });
     })();
   }, [userId, refresh, pushLog]);
 
@@ -272,6 +278,7 @@ function SystemPage() {
         setLevelUpTrigger(k => k + 1);
         sfxLevelUp();
         pushLog("LEVEL", `LEVEL UP → LV ${res.new_level} · ${res.new_rank}`);
+        notify("LEVEL UP", `You are now LV ${res.new_level} · ${res.new_rank}`);
         speak(res.new_rank === "SHADOW MONARCH"
           ? "Welcome back, Master. Quests resolved."
           : "Quest completed. Level up.");
