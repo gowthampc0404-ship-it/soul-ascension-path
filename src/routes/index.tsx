@@ -278,6 +278,7 @@ function SystemPage() {
         setLevelUpTrigger(k => k + 1);
         sfxLevelUp();
         pushLog("LEVEL", `LEVEL UP → LV ${res.new_level} · ${res.new_rank}`);
+        notify("LEVEL UP", `You are now LV ${res.new_level} · ${res.new_rank}`);
         speak(res.new_rank === "SHADOW MONARCH"
           ? "Welcome back, Master. Quests resolved."
           : "Quest completed. Level up.");
