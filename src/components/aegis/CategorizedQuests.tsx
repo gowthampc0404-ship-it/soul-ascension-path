@@ -179,8 +179,9 @@ function TimerStrip({ minutes, onDone, locked }: { log_id: string; minutes: numb
   );
 }
 
-function RepStrip({ quest_id, current, target, onDelta, log_id, onComplete, locked }: { quest_id: string; current: number; target: number; onDelta: (q: string, d: number) => Promise<{ reached: boolean } | void>; log_id: string; onComplete: (id: string) => void; locked: boolean }) {
+function RepStrip({ quest_id, title, current, target, onDelta, log_id, onComplete, locked }: { quest_id: string; title: string; current: number; target: number; onDelta: (q: string, d: number) => Promise<{ reached: boolean } | void>; log_id: string; onComplete: (id: string) => void; locked: boolean }) {
   const [val, setVal] = useState(current);
+  const [watching, setWatching] = useState(false);
   useEffect(() => setVal(current), [current]);
   const pct = Math.min(100, (val / target) * 100);
   const handle = async (d: number) => {
@@ -191,15 +192,54 @@ function RepStrip({ quest_id, current, target, onDelta, log_id, onComplete, lock
     if (res && res.reached && !locked) onComplete(log_id);
   };
   return (
-    <div className="flex items-center gap-2 border border-primary/30 bg-black/40 px-3 py-2">
-      <button type="button" onClick={() => handle(-1)} className="grid h-9 w-9 place-items-center border border-destructive/50 danger-text hover:bg-destructive/20"><Minus className="h-4 w-4" /></button>
-      <div className="flex-1 text-center">
-        <div className="font-display text-lg neon-text tabular-nums" style={{ textShadow: "0 0 8px oklch(0.65 0.27 300)" }}>{val} / {target}</div>
-        <div className="relative mt-1 h-1 w-full bg-black/60">
-          <div className="absolute inset-y-0 left-0 transition-all" style={{ width: `${pct}%`, background: "linear-gradient(90deg, oklch(0.85 0.18 220), oklch(0.65 0.27 300))", boxShadow: "0 0 8px oklch(0.65 0.27 300)" }} />
+    <>
+      <div className="flex items-center gap-2 border border-primary/30 bg-black/40 px-3 py-2">
+        <button type="button" onClick={() => handle(-1)} className="grid h-9 w-9 place-items-center border border-destructive/50 danger-text hover:bg-destructive/20"><Minus className="h-4 w-4" /></button>
+        <div className="flex-1 text-center">
+          <div className="font-display text-lg neon-text tabular-nums" style={{ textShadow: "0 0 8px oklch(0.65 0.27 300)" }}>{val} / {target}</div>
+          <div className="relative mt-1 h-1 w-full bg-black/60">
+            <div className="absolute inset-y-0 left-0 transition-all" style={{ width: `${pct}%`, background: "linear-gradient(90deg, oklch(0.85 0.18 220), oklch(0.65 0.27 300))", boxShadow: "0 0 8px oklch(0.65 0.27 300)" }} />
+          </div>
         </div>
+        <button type="button" onClick={() => handle(1)} className="grid h-9 w-9 place-items-center border border-primary/60 neon-text hover:bg-primary/20"><Plus className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setWatching(true)} title="AI Watch (camera rep counter)" className="grid h-9 w-9 place-items-center border border-accent/60 cyan-text hover:bg-accent/20"><Camera className="h-4 w-4" /></button>
       </div>
-      <button type="button" onClick={() => handle(1)} className="grid h-9 w-9 place-items-center border border-primary/60 neon-text hover:bg-primary/20"><Plus className="h-4 w-4" /></button>
+      <CameraWatch
+        open={watching}
+        title={title}
+        current={val}
+        target={target}
+        onRep={() => handle(1)}
+        onClose={() => setWatching(false)}
+      />
+    </>
+  );
+}
+
+function DistanceStrip({ target, log_id, onComplete, locked }: { target: number; log_id: string; onComplete: (id: string) => void; locked: boolean }) {
+  const [active, setActive] = useState(false);
+  const { km, error, reset } = useDistanceTracker(active);
+  const pct = Math.min(100, (km / target) * 100);
+  useEffect(() => {
+    if (!locked && km >= target && active) {
+      setActive(false);
+      onComplete(log_id);
+    }
+  }, [km, target, active, locked, onComplete, log_id]);
+  return (
+    <div className="flex items-center gap-2 border border-destructive/40 bg-black/40 px-3 py-2">
+      <MapPin className="h-4 w-4 danger-text" />
+      <div className="flex-1">
+        <div className="font-display text-sm danger-text tabular-nums">{km.toFixed(2)} / {target} KM</div>
+        <div className="relative mt-1 h-1 w-full bg-black/60">
+          <div className="absolute inset-y-0 left-0 transition-all" style={{ width: `${pct}%`, background: "linear-gradient(90deg, oklch(0.78 0.18 220), oklch(0.62 0.25 27))", boxShadow: "0 0 8px oklch(0.62 0.25 27)" }} />
+        </div>
+        {error && <div className="mt-1 font-mono text-[9px] danger-text">{error}</div>}
+      </div>
+      <button type="button" onClick={() => setActive((a) => !a)} className="grid h-9 w-9 place-items-center border border-accent/60 cyan-text hover:bg-accent/20" title={active ? "Pause tracking" : "Start tracking"}>
+        {active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </button>
+      <button type="button" onClick={() => { setActive(false); reset(); }} className="grid h-9 w-9 place-items-center border border-primary/30 text-muted-foreground hover:border-accent" title="Reset"><RotateCcw className="h-4 w-4" /></button>
     </div>
   );
 }
