@@ -14,6 +14,7 @@ import { NavBar } from "@/components/aegis/NavBar";
 import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
+import { requestNotificationPermission, notify } from "@/lib/notifications";
 import { LogOut, Swords, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/")({
