@@ -184,6 +184,10 @@ function SystemPage() {
       }
       await refresh(userId);
       pushLog("SYS", "Daily quest matrix synchronized.");
+      // Phase 4: request notification permission once per session
+      requestNotificationPermission().then((ok) => {
+        if (ok) pushLog("SYS", "Notification channel armed.");
+      });
     })();
   }, [userId, refresh, pushLog]);
 
