@@ -1,16 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { ParticleBackground } from "@/components/aegis/ParticleBackground";
 import { NavBar } from "@/components/aegis/NavBar";
-import { VortexGrid } from "@/components/aegis/VortexGrid";
-import { LogOut } from "lucide-react";
-import shadowHunter from "@/assets/shadow-hunter.png";
+import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
       { title: "Crystal Matrix · Aegis System" },
-      { name: "description", content: "System Level & Progress Chart: weekly, monthly, yearly telemetry." },
+      { name: "description", content: "Quest completion telemetry: weekly, monthly, yearly chronicles." },
     ],
   }),
   component: DashboardPage,
@@ -18,13 +17,17 @@ export const Route = createFileRoute("/dashboard")({
 
 type Range = "weekly" | "monthly" | "yearly";
 type Cat = "physical" | "mental" | "daily";
+type Mode = "combined" | "split";
 
-interface QuestRow { quest_id: string; category: Cat; }
+interface QuestRow { quest_id: string; category: Cat; scheduled_days: boolean[]; }
 interface LogRow { quest_id: string; status: string; checked_at: string; }
 interface ProfileRow { current_streak: number; current_level: number; current_rank: string; hunter_name: string | null; }
 
-const DAYS_FULL = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const CAT_META: Record<Cat, { label: string; color: string }> = {
+  physical: { label: "PHYSICAL", color: "oklch(0.65 0.27 300)" },
+  mental:   { label: "MENTAL",   color: "oklch(0.78 0.18 220)" },
+  daily:    { label: "DAILY",    color: "oklch(0.62 0.25 27)" },
+};
 
 function startOfWeek(d: Date) { const x = new Date(d); const dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); x.setHours(0,0,0,0); return x; }
 function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -37,11 +40,17 @@ function iso(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function DashboardPage() {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("weekly");
-  const [activeDow, setActiveDow] = useState<number>(((new Date().getDay() + 6) % 7));
+  const [mode, setMode] = useState<Mode>("combined");
+  const [anchor, setAnchor] = useState<Date>(new Date());
   const [quests, setQuests] = useState<QuestRow[]>([]);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -53,23 +62,30 @@ function DashboardPage() {
     });
   }, [nav]);
 
-  const { from, to } = useMemo(() => {
-    const anchor = new Date();
+  // Range bounds
+  const { from, to, label } = useMemo(() => {
     if (range === "weekly") {
-      const f = startOfWeek(anchor); return { from: f, to: addDays(f, 6) };
+      const f = startOfWeek(anchor);
+      const t = addDays(f, 6);
+      const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+      return { from: f, to: t, label: `${fmt(f)} — ${fmt(t)}` };
     }
     if (range === "monthly") {
-      const f = startOfMonth(anchor); return { from: f, to: new Date(f.getFullYear(), f.getMonth() + 1, 0) };
+      const f = startOfMonth(anchor);
+      const t = new Date(f.getFullYear(), f.getMonth() + 1, 0);
+      return { from: f, to: t, label: f.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toUpperCase() };
     }
-    const f = startOfYear(anchor); return { from: f, to: new Date(f.getFullYear(), 11, 31) };
-  }, [range]);
+    const f = startOfYear(anchor);
+    const t = new Date(f.getFullYear(), 11, 31);
+    return { from: f, to: t, label: String(f.getFullYear()) };
+  }, [range, anchor]);
 
   useEffect(() => {
     if (!userId) return;
     (async () => {
       const [{ data: q }, { data: l }, { data: p }] = await Promise.all([
-        supabase.from("quests").select("quest_id, category").eq("user_id", userId).eq("is_archived", false),
-        supabase.from("quest_logs").select("quest_id, status, checked_at").eq("user_id", userId).in("status", ["completed","failed"]).gte("checked_at", iso(from)).lte("checked_at", iso(to)),
+        supabase.from("quests").select("quest_id, category, scheduled_days").eq("user_id", userId).eq("is_archived", false),
+        supabase.from("quest_logs").select("quest_id, status, checked_at").eq("user_id", userId).in("status", ["completed", "failed"]).gte("checked_at", iso(from)).lte("checked_at", iso(to)),
         supabase.from("profiles").select("current_streak, current_level, current_rank, hunter_name").eq("user_id", userId).single(),
       ]);
       setQuests((q || []) as QuestRow[]);
@@ -78,40 +94,77 @@ function DashboardPage() {
     })();
   }, [userId, from, to]);
 
-  // Per-category success ratios for the bar chart
-  const catData = useMemo(() => {
+  // Bar chart buckets (counts of completed + failed quests)
+  const buckets = useMemo(() => {
+    const make = (labels: string[]) => labels.map(l => ({ label: l, completed: 0, failed: 0 }));
+    let arr: { label: string; completed: number; failed: number }[];
+    let getIdx: (log: LogRow) => number;
+    if (range === "weekly") {
+      arr = make(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
+      getIdx = (l) => (parseLocalDate(l.checked_at).getDay() + 6) % 7;
+    } else if (range === "monthly") {
+      const dim = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+      arr = make(Array.from({ length: dim }, (_, i) => String(i+1)));
+      getIdx = (l) => parseInt(l.checked_at.slice(8, 10), 10) - 1;
+    } else {
+      arr = make(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]);
+      getIdx = (l) => parseInt(l.checked_at.slice(5, 7), 10) - 1;
+    }
+    for (const log of logs) {
+      const i = getIdx(log);
+      if (i < 0 || i >= arr.length) continue;
+      if (log.status === "completed") arr[i].completed++;
+      else if (log.status === "failed") arr[i].failed++;
+    }
+    return arr;
+  }, [logs, range, from]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const completed = logs.filter(l => l.status === "completed").length;
+    const failed = logs.filter(l => l.status === "failed").length;
+    const total = logs.length;
+    const completionPct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+    // active units
+    const activeSet = new Set<string>();
+    for (const l of logs) {
+      if (l.status !== "completed") continue;
+      if (range === "yearly") activeSet.add(l.checked_at.slice(0, 7));
+      else activeSet.add(l.checked_at);
+    }
+    return { completed, failed, total, completionPct, active: activeSet.size };
+  }, [logs, range]);
+
+  // Pie: completed/failed/remaining
+  const pie = useMemo(() => {
+    const t = stats.total || 1;
+    return [
+      { key: "COMPLETED", value: stats.completed, pct: (stats.completed / t) * 100, color: "oklch(0.78 0.18 220)" },
+      { key: "FAILED",    value: stats.failed,    pct: (stats.failed / t) * 100,    color: "oklch(0.62 0.25 27)" },
+    ];
+  }, [stats]);
+
+  // Category breakdown
+  const catBreakdown = useMemo(() => {
     const qmap = new Map(quests.map(q => [q.quest_id, q.category]));
-    const acc: Record<Cat, { done: number; total: number }> = {
-      physical: { done: 0, total: 0 },
-      mental:   { done: 0, total: 0 },
-      daily:    { done: 0, total: 0 },
-    };
+    const init = (): { done: number; total: number } => ({ done: 0, total: 0 });
+    const acc: Record<Cat, { done: number; total: number }> = { physical: init(), mental: init(), daily: init() };
     for (const l of logs) {
       const c = qmap.get(l.quest_id); if (!c) continue;
       acc[c].total++;
       if (l.status === "completed") acc[c].done++;
     }
-    const ratio = (v: { done: number; total: number }) => v.total === 0 ? 0 : Math.round((v.done / v.total) * 100);
-    // 4 columns to match the design (Physical, Mental, Gym=daily, Study=mental fallback)
-    return [
-      { label: "Physical",   purple: ratio(acc.physical), cyan: Math.min(100, ratio(acc.physical) - 15) },
-      { label: "Mental",     purple: ratio(acc.mental),   cyan: Math.min(100, ratio(acc.mental) - 25) },
-      { label: "Gym",        purple: Math.max(0, ratio(acc.daily) - 10), cyan: Math.max(0, ratio(acc.daily) - 25) },
-      { label: "Study Mode", purple: ratio(acc.mental),   cyan: Math.max(0, ratio(acc.mental) - 30) },
-    ].map(d => ({ ...d, cyan: Math.max(0, d.cyan) }));
+    return acc;
   }, [logs, quests]);
 
-  // Efficiency index line — simple smoothed up-trend across columns
-  const efficiency = useMemo(() => {
-    const totals = catData.map(c => (c.purple + c.cyan) / 2);
-    const base = totals.length > 0 ? totals.reduce((a,b) => a+b, 0) / totals.length : 0;
-    return totals.map((v, i) => Math.min(95, Math.max(15, Math.round(base * 0.4 + v * 0.4 + i * 8))));
-  }, [catData]);
-
-  const completionPct = useMemo(() => {
-    const t = logs.length || 1;
-    return Math.round((logs.filter(l => l.status === "completed").length / t) * 100);
-  }, [logs]);
+  const shift = (delta: number) => {
+    const d = new Date(anchor);
+    if (range === "weekly") d.setDate(d.getDate() + delta * 7);
+    else if (range === "monthly") d.setMonth(d.getMonth() + delta);
+    else d.setFullYear(d.getFullYear() + delta);
+    setAnchor(d);
+  };
 
   const signOut = useCallback(async () => { await supabase.auth.signOut(); nav({ to: "/auth" }); }, [nav]);
 
@@ -123,11 +176,13 @@ function DashboardPage() {
     );
   }
 
+  const activeLabel = range === "yearly" ? "ACTIVE MOS" : "ACTIVE DAYS";
+
   return (
     <main className="relative min-h-screen overflow-x-hidden pb-16">
-      <VortexGrid className="opacity-50" />
+      <ParticleBackground streak={profile.current_streak} />
 
-      <header className="relative z-10 mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+      <header className="relative mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 pt-6 sm:px-6">
         <div>
           <div className="text-[10px] uppercase tracking-[0.5em] cyan-text">[ AEGIS SYSTEM ]</div>
           <div className="font-display text-sm uppercase tracking-[0.3em] text-muted-foreground">CHRONICLES · QUEST TELEMETRY</div>
@@ -138,103 +193,91 @@ function DashboardPage() {
         </button>
       </header>
 
-      <section className="relative z-10 mx-auto mt-6 max-w-6xl px-4 sm:px-6">
-        {/* Outer framed chart panel */}
-        <div className="glass-panel angular-clip relative animated-border p-6">
-          {/* Header pill */}
-          <div className="-mt-12 flex justify-center">
-            <div className="glass-panel angular-clip px-8 py-3">
-              <h2 className="font-display text-lg tracking-[0.25em] neon-text sm:text-xl">SYSTEM LEVEL &amp; PROGRESS CHART</h2>
-            </div>
-          </div>
-
-          {/* Range tabs */}
-          <div className="mt-6 grid grid-cols-3 gap-3">
-            {([
-              { id: "weekly",  label: "[WEEKLY SYSTEM VIEW]" },
-              { id: "monthly", label: "[MONTHLY TRACKING LOG]" },
-              { id: "yearly",  label: "[YEARLY DIRECTIVE GRAPH]" },
-            ] as { id: Range; label: string }[]).map(t => (
-              <button key={t.id} onClick={() => setRange(t.id)}
-                className={`corner-clip border px-3 py-3 font-display text-[10px] uppercase tracking-[0.25em] transition sm:text-xs ${
-                  range === t.id
-                    ? "border-accent bg-accent/15 cyan-text shadow-[var(--glow-cyan)]"
-                    : "border-primary/30 bg-black/30 text-muted-foreground hover:border-primary/60"
-                }`}>{t.label}</button>
-            ))}
-          </div>
-
-          {/* Subtitle */}
-          <h3 className="mt-6 font-display text-base text-foreground/95">
-            {range === "weekly" ? "Weekly System Overview (Mon - Sun)"
-             : range === "monthly" ? "Monthly Tracking Log"
-             : "Yearly Directive Graph"}
-          </h3>
-
-          {/* Day ribbon (weekly) */}
-          {range === "weekly" && (
-            <div className="mt-4 grid grid-cols-7 gap-2">
-              {DAYS_FULL.map((d, i) => {
-                const isActive = i === activeDow;
-                return (
-                  <button key={d} onClick={() => setActiveDow(i)} className="flex flex-col items-center gap-1">
-                    {isActive ? (
-                      <div className="relative grid h-14 w-14 place-items-center">
-                        <Hex glow />
-                        <span className="absolute inset-0 grid place-items-center font-display text-[10px] uppercase tracking-widest cyan-text">{DAYS_SHORT[i]}</span>
-                        <span className="absolute -bottom-2 grid h-5 w-5 place-items-center rounded-full bg-black ring-2 ring-emerald-400 text-[10px] neon-green">✓</span>
-                      </div>
-                    ) : (
-                      <div className="grid h-12 w-full place-items-center border border-primary/40 px-2 corner-clip text-[10px] uppercase tracking-widest text-foreground/80 hover:border-primary">
-                        <span className="hidden sm:inline">{d}</span><span className="sm:hidden">{DAYS_SHORT[i]}</span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Chart row */}
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
-            {/* Bar + line chart */}
-            <div className="glass-panel angular-clip relative p-4 lg:col-span-2">
-              <NeonDualBarChart data={catData} efficiency={efficiency} />
-            </div>
-
-            {/* Biometrics analyzer */}
-            <div className="glass-panel angular-clip p-5">
-              <div className="font-display text-base text-foreground/95">Body Recovery &amp; biometrics Analyzer</div>
-              <div className="mt-4 flex items-center gap-4">
-                <ProgressRing pct={completionPct} />
-                <div className="space-y-3 text-xs uppercase tracking-widest">
-                  <div>
-                    <div className="text-muted-foreground">BODY PROGRESSIVE OVERLOAD:</div>
-                    <div className="font-display text-base neon-green">SAFE</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">RECOVERY RATIO:</div>
-                    <div className="font-display text-base neon-green">OPTIMAL</div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 space-y-1 text-[11px] uppercase tracking-widest">
-                <div><span className="text-muted-foreground">CURRENT ACTIVE STREAKS:</span> <span className="neon-green font-display">{profile.current_streak}</span></div>
-                <div><span className="text-muted-foreground">SYSTEM LEVEL:</span> <span className="cyan-text font-display">{profile.current_level}</span></div>
-              </div>
-            </div>
-          </div>
+      {/* Range selector */}
+      <section className="relative mx-auto mt-6 max-w-5xl px-4 sm:px-6">
+        <div className="glass-panel-cyan glass-panel angular-clip grid grid-cols-3 gap-2 p-2">
+          {(["weekly","monthly","yearly"] as Range[]).map(r => (
+            <button key={r} onClick={() => { setRange(r); setAnchor(new Date()); }} className={`border px-4 py-2 font-display text-[11px] uppercase tracking-[0.35em] transition ${
+              range === r ? "border-accent bg-accent/20 cyan-text shadow-[var(--glow-cyan)]" : "border-primary/20 text-muted-foreground hover:border-primary/60"
+            }`}>{r}</button>
+          ))}
         </div>
 
-        {/* Hunter eval HUD */}
-        <div className="relative z-10 mt-6 flex items-end justify-end gap-3">
-          <img src={shadowHunter} alt="Hunter" width={200} height={200} loading="lazy" className="hidden h-40 w-auto drop-shadow-[0_0_24px_oklch(0.55_0.2_290/0.7)] sm:block" />
-          <div className="glass-panel angular-clip max-w-md p-4 text-sm text-foreground/90">
-            <div className="text-[9px] uppercase tracking-[0.4em] cyan-text">[ SHADOW REGISTRY ]</div>
-            <p className="mt-2 leading-relaxed">
-              System Evaluation Complete, {(profile.hunter_name || "Hunter").toUpperCase()}.
-              Level {profile.current_level} Threshold reached. Your core routines are stabilizing across the active matrix.
-            </p>
+        {/* Period nav */}
+        <div className="mt-4 flex items-center justify-center gap-4">
+          <button onClick={() => shift(-1)} className="grid h-9 w-9 place-items-center border border-primary/30 transition hover:border-accent hover:cyan-text"><ChevronLeft className="h-4 w-4" /></button>
+          <div className="font-display text-base uppercase tracking-[0.3em] text-foreground/90">{label}</div>
+          <button onClick={() => shift(1)} className="grid h-9 w-9 place-items-center border border-primary/30 transition hover:border-accent hover:cyan-text"><ChevronRight className="h-4 w-4" /></button>
+        </div>
+
+        {/* Stat tiles */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile value={`${stats.completionPct}%`} label="COMPLETION" tone="cyan" />
+          <StatTile value={String(stats.completed)} label="CLEARED" tone="pink" />
+          <StatTile value={String(stats.failed)} label="FAILED" tone="danger" />
+          <StatTile value={String(stats.active)} label={activeLabel} tone="white" />
+        </div>
+      </section>
+
+      <section className="relative mx-auto mt-6 grid max-w-5xl gap-6 px-4 sm:px-6 lg:grid-cols-2">
+        <div className="glass-panel-cyan glass-panel angular-clip p-5 lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ TELEMETRY ]</div>
+            <div className="flex items-center gap-2 border border-primary/25 p-1">
+              {(["combined","split"] as Mode[]).map(m => (
+                <button key={m} onClick={() => setMode(m)} className={`px-2.5 py-1 font-display text-[9px] uppercase tracking-[0.3em] transition ${
+                  mode === m ? "bg-accent/20 cyan-text" : "text-muted-foreground hover:text-foreground"
+                }`}>{m === "combined" ? "TOTAL" : "SPLIT"}</button>
+              ))}
+            </div>
+          </div>
+          <h3 className="mb-3 font-display text-lg cyan-text">
+            {range === "weekly" ? "DAILY ACTIVITY" : range === "monthly" ? "DAILY ACTIVITY" : "MONTHLY ACTIVITY"}
+          </h3>
+          {mode === "split" && (
+            <div className="mb-3 flex items-center gap-4 text-[9px] uppercase tracking-widest">
+              <span className="flex items-center gap-2"><span className="h-2 w-3" style={{ background: "oklch(0.78 0.18 220)", boxShadow: "0 0 8px oklch(0.78 0.18 220)" }} />COMPLETED</span>
+              <span className="flex items-center gap-2"><span className="h-2 w-3" style={{ background: "oklch(0.62 0.25 27)", boxShadow: "0 0 8px oklch(0.62 0.25 27)" }} />FAILED</span>
+            </div>
+          )}
+          <BarChartNeon data={buckets} dense={range !== "weekly"} mode={mode} />
+        </div>
+
+        <div className="glass-panel angular-clip p-5">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ QUEST DISTRIBUTION ]</div>
+          <div className="flex items-center justify-center gap-6">
+            <PieChartNeon slices={pie} hasData={stats.total > 0} />
+          </div>
+          <ul className="mt-4 flex flex-wrap items-center justify-center gap-4 text-[10px] uppercase tracking-widest">
+            {pie.map(s => (
+              <li key={s.key} className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color, boxShadow: `0 0 8px ${s.color}` }} />
+                <span className="text-foreground/80">{s.key}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="glass-panel angular-clip p-5">
+          <div className="mb-3 text-[10px] uppercase tracking-[0.4em] text-muted-foreground">[ CATEGORY BREAKDOWN ]</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {(Object.keys(CAT_META) as Cat[]).map(c => {
+              const m = CAT_META[c];
+              const v = catBreakdown[c];
+              const pct = v.total === 0 ? 0 : Math.round((v.done / v.total) * 100);
+              return (
+                <div key={c} className="border border-primary/25 p-3 corner-clip" style={{ background: `color-mix(in oklab, ${m.color} 8%, transparent)` }}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-display text-sm uppercase tracking-[0.2em]" style={{ color: m.color }}>{m.label}</div>
+                    <div className="font-display text-base text-foreground">{v.done}</div>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden bg-black/50">
+                    <div className="h-full transition-all" style={{ width: `${pct}%`, background: m.color, boxShadow: `0 0 10px ${m.color}` }} />
+                  </div>
+                  <div className="mt-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">{v.done}/{v.total} QUESTS</div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -242,115 +285,92 @@ function DashboardPage() {
   );
 }
 
-/* ============ Sub-components ============ */
-
-function Hex({ glow }: { glow?: boolean }) {
+function StatTile({ value, label, tone }: { value: string; label: string; tone: "cyan" | "pink" | "danger" | "white" }) {
+  const cls = tone === "cyan" ? "cyan-text" : tone === "pink" || tone === "danger" ? "danger-text" : "text-foreground";
   return (
-    <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden="true">
-      <polygon
-        points="50,4 92,27 92,73 50,96 8,73 8,27"
-        fill="oklch(0.16 0.03 270 / 0.7)"
-        stroke="oklch(0.78 0.18 220)"
-        strokeWidth="3"
-        style={{ filter: glow ? "drop-shadow(0 0 10px oklch(0.78 0.18 220))" : undefined }}
-      />
-    </svg>
-  );
-}
-
-function ProgressRing({ pct }: { pct: number }) {
-  const r = 38; const c = 2 * Math.PI * r;
-  const dash = (pct / 100) * c;
-  return (
-    <div className="relative grid h-24 w-24 place-items-center">
-      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-        <circle cx="50" cy="50" r={r} fill="none" stroke="oklch(0.2 0.03 270)" strokeWidth="8" />
-        <defs>
-          <linearGradient id="ringG" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="oklch(0.78 0.18 220)" />
-            <stop offset="100%" stopColor="oklch(0.65 0.27 300)" />
-          </linearGradient>
-        </defs>
-        <circle cx="50" cy="50" r={r} fill="none" stroke="url(#ringG)" strokeWidth="8" strokeLinecap="round"
-          strokeDasharray={`${dash} ${c}`} style={{ filter: "drop-shadow(0 0 6px oklch(0.78 0.18 220 / 0.8))" }} />
-      </svg>
-      <div className="absolute font-display text-[10px] uppercase tracking-widest cyan-text">PROGRESS</div>
+    <div className="glass-panel angular-clip p-4 text-center">
+      <div className={`font-display text-2xl ${cls}`}>{value}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">{label}</div>
     </div>
   );
 }
 
-function NeonDualBarChart({
-  data,
-  efficiency,
-}: {
-  data: { label: string; purple: number; cyan: number }[];
-  efficiency: number[];
-}) {
-  const W = 560, H = 240, padL = 40, padR = 40, padT = 20, padB = 36;
-  const innerW = W - padL - padR;
-  const innerH = H - padT - padB;
-  const colW = innerW / data.length;
-  const barGap = 6;
-  const barW = (colW - barGap * 3) / 2;
-  const yFor = (v: number) => padT + innerH - (v / 100) * innerH;
-  const yLeftTicks = [0, 20, 40, 60, 80, 100];
-
-  // efficiency polyline points (centered in each column)
-  const linePts = efficiency.map((v, i) => {
-    const x = padL + i * colW + colW / 2;
-    const y = yFor(v);
-    return `${x},${y}`;
-  }).join(" ");
+function BarChartNeon({ data, dense, mode }: { data: { label: string; completed: number; failed: number }[]; dense?: boolean; mode: "combined" | "split" }) {
+  const max = Math.max(1, ...data.map(d => mode === "split" ? Math.max(d.completed, d.failed) : d.completed + d.failed));
+  const completedBg = "linear-gradient(180deg, oklch(0.85 0.18 220), oklch(0.5 0.22 260))";
+  const failedBg = "linear-gradient(180deg, oklch(0.78 0.22 27), oklch(0.45 0.22 20))";
+  const completedGlow = "0 0 14px oklch(0.78 0.18 220 / 0.7)";
+  const failedGlow = "0 0 14px oklch(0.62 0.25 27 / 0.7)";
+  const clip = "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)";
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-56 w-full" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="oklch(0.85 0.18 300)" />
-          <stop offset="100%" stopColor="oklch(0.5 0.25 295)" />
-        </linearGradient>
-        <linearGradient id="cyanBar" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="oklch(0.9 0.16 220)" />
-          <stop offset="100%" stopColor="oklch(0.55 0.2 230)" />
-        </linearGradient>
-        <filter id="glow"><feGaussianBlur stdDeviation="2.5" /></filter>
-      </defs>
-
-      {/* Y grid + ticks */}
-      {yLeftTicks.map(t => (
-        <g key={t}>
-          <line x1={padL} y1={yFor(t)} x2={W - padR} y2={yFor(t)} stroke="oklch(0.65 0.27 300 / 0.08)" strokeWidth="1" />
-          <text x={padL - 6} y={yFor(t) + 4} textAnchor="end" fontSize="9" fill="oklch(0.7 0.04 270)">{t}</text>
-          <text x={W - padR + 6} y={yFor(t) + 4} textAnchor="start" fontSize="9" fill="oklch(0.7 0.04 270)">{t}</text>
-        </g>
-      ))}
-
-      {/* Axis titles */}
-      <text x={10} y={H/2} transform={`rotate(-90 10 ${H/2})`} textAnchor="middle" fontSize="9" fill="oklch(0.7 0.04 270)">Total task success ratio</text>
-      <text x={W - 10} y={H/2} transform={`rotate(-90 ${W - 10} ${H/2})`} textAnchor="middle" fontSize="9" fill="oklch(0.7 0.04 270)">Overall efficiency index</text>
-
-      {/* Bars */}
+    <div className="flex h-44 items-stretch gap-1">
       {data.map((d, i) => {
-        const xStart = padL + i * colW + barGap;
-        const pY = yFor(d.purple);
-        const cY = yFor(d.cyan);
+        const showLabel = !dense || i % Math.ceil(data.length / 12) === 0;
+        const total = d.completed + d.failed;
         return (
-          <g key={d.label}>
-            <rect x={xStart} y={pY} width={barW} height={padT + innerH - pY}
-              fill="url(#purpleBar)" style={{ filter: "drop-shadow(0 0 6px oklch(0.65 0.27 300 / 0.85))" }} />
-            <rect x={xStart + barW + barGap} y={cY} width={barW} height={padT + innerH - cY}
-              fill="url(#cyanBar)" style={{ filter: "drop-shadow(0 0 6px oklch(0.78 0.18 220 / 0.85))" }} />
-            <text x={padL + i * colW + colW / 2} y={H - 12} textAnchor="middle" fontSize="10" fill="oklch(0.92 0.02 270)">{d.label}</text>
-          </g>
+          <div key={i} className="group flex h-full flex-1 flex-col items-center gap-1">
+            <div className="relative flex min-h-0 w-full flex-1 items-end">
+              {mode === "split" ? (
+                <div className="flex h-full w-full items-end gap-[2px]">
+                  <div className="relative flex-1 transition-all" style={{
+                    height: `${(d.completed / max) * 100}%`, minHeight: d.completed > 0 ? "10px" : "0", background: completedBg,
+                    boxShadow: d.completed > 0 ? completedGlow : "none", clipPath: clip,
+                  }}>
+                    {d.completed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}</div>}
+                  </div>
+                  <div className="relative flex-1 transition-all" style={{
+                    height: `${(d.failed / max) * 100}%`, minHeight: d.failed > 0 ? "10px" : "0", background: failedBg,
+                    boxShadow: d.failed > 0 ? failedGlow : "none", clipPath: clip,
+                  }}>
+                    {d.failed > 0 && <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] danger-text opacity-0 transition-opacity group-hover:opacity-100">{d.failed}</div>}
+                  </div>
+                </div>
+              ) : (
+                <div className="relative w-full transition-all" style={{ height: `${(total / max) * 100}%`, minHeight: total > 0 ? "10px" : "0" }}>
+                  {d.failed > 0 && (
+                    <div className="absolute inset-x-0 top-0 transition-all" style={{
+                      height: `${total > 0 ? (d.failed / total) * 100 : 0}%`,
+                      background: failedBg, boxShadow: failedGlow,
+                      clipPath: "polygon(0 4px, 4px 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 0 100%)",
+                    }} />
+                  )}
+                  {d.completed > 0 && (
+                    <div className="absolute inset-x-0 bottom-0 transition-all" style={{
+                      height: `${total > 0 ? (d.completed / total) * 100 : 0}%`,
+                      minHeight: d.completed > 0 ? "10px" : "0",
+                      background: completedBg, boxShadow: completedGlow,
+                    }} />
+                  )}
+                  {total > 0 && (
+                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-display text-[9px] cyan-text opacity-0 transition-opacity group-hover:opacity-100">{d.completed}/{d.failed}</div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className={`text-[9px] uppercase tracking-widest text-muted-foreground ${showLabel ? "" : "opacity-0"}`}>{d.label}</div>
+          </div>
         );
       })}
+    </div>
+  );
+}
 
-      {/* Efficiency line — green */}
-      <polyline points={linePts} fill="none" stroke="oklch(0.82 0.22 145)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: "drop-shadow(0 0 6px oklch(0.82 0.22 145 / 0.9))" }} />
-      {efficiency.map((v, i) => {
-        const x = padL + i * colW + colW / 2;
-        const y = yFor(v);
-        return <circle key={i} cx={x} cy={y} r="3.5" fill="oklch(0.92 0.2 145)" stroke="oklch(0.4 0.18 145)" strokeWidth="1" />;
+function PieChartNeon({ slices, hasData }: { slices: { key: string; pct: number; color: string }[]; hasData: boolean }) {
+  const r = 60, c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <svg viewBox="-80 -80 160 160" className="h-44 w-44 -rotate-90">
+      <circle r={r} cx="0" cy="0" fill="none" stroke="oklch(0.2 0.02 270)" strokeWidth="22" />
+      {hasData && slices.map((s, i) => {
+        const len = (s.pct / 100) * c;
+        const el = (
+          <circle key={i} r={r} cx="0" cy="0" fill="none" stroke={s.color} strokeWidth="22"
+            strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset}
+            style={{ filter: `drop-shadow(0 0 6px ${s.color})` }} />
+        );
+        offset += len;
+        return el;
       })}
     </svg>
   );

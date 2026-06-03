@@ -15,8 +15,6 @@ import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
 import { requestNotificationPermission, notify } from "@/lib/notifications";
-import { SplashScreen } from "@/components/aegis/SplashScreen";
-
 import { LogOut, Swords, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -75,11 +73,6 @@ function SystemPage() {
   const [ambush, setAmbush] = useState<{ open: boolean; failed: number; hp: number; xp: number; date: string } | null>(null);
   const [externalLogs, setExternalLogs] = useState<LogEntry[]>([]);
   const lastResetDayRef = useRef<string>(new Date().toDateString());
-  const [showSplash, setShowSplash] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return sessionStorage.getItem("aegis-splashed") !== "1";
-  });
-
 
   const pushLog = useCallback((kind: LogEntry["kind"], text: string) => {
     setExternalLogs(prev => [...prev, { ts: nowStamp(), kind, text }]);
@@ -407,10 +400,6 @@ function SystemPage() {
   const completed = useMemo(() => dailyOnly.filter(q => q.status === "completed").length, [dailyOnly]);
   const isMonarch = profile?.current_rank === "SHADOW MONARCH";
 
-  if (showSplash) {
-    return <SplashScreen onDone={() => { sessionStorage.setItem("aegis-splashed", "1"); setShowSplash(false); }} />;
-  }
-
   if (!profile) {
     return (
       <main className="grid min-h-screen place-items-center">
@@ -422,7 +411,6 @@ function SystemPage() {
   return (
     <main className="relative min-h-screen overflow-x-hidden pb-16">
       <ParticleBackground streak={profile.current_streak} />
-
 
       {flashKey > 0 && <div key={`pf-${flashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-purple" />}
       {redFlashKey > 0 && <div key={`rf-${redFlashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-red" />}
