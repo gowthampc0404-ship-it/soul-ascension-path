@@ -407,6 +407,10 @@ function SystemPage() {
   const completed = useMemo(() => dailyOnly.filter(q => q.status === "completed").length, [dailyOnly]);
   const isMonarch = profile?.current_rank === "SHADOW MONARCH";
 
+  if (showSplash) {
+    return <SplashScreen onDone={() => { sessionStorage.setItem("aegis-splashed", "1"); setShowSplash(false); }} />;
+  }
+
   if (!profile) {
     return (
       <main className="grid min-h-screen place-items-center">
@@ -418,6 +422,7 @@ function SystemPage() {
   return (
     <main className="relative min-h-screen overflow-x-hidden pb-16">
       <ParticleBackground streak={profile.current_streak} />
+
 
       {flashKey > 0 && <div key={`pf-${flashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-purple" />}
       {redFlashKey > 0 && <div key={`rf-${redFlashKey}`} className="pointer-events-none fixed inset-0 z-40 animate-flash-red" />}
