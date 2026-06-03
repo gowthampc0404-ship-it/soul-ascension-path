@@ -15,6 +15,8 @@ import { LevelUpOverlay } from "@/components/aegis/LevelUpOverlay";
 import { SystemWarningModal } from "@/components/aegis/SystemWarningModal";
 import { sfxLevelUp, sfxQuestComplete, sfxSlash, sfxFailure, speak } from "@/lib/sfx";
 import { requestNotificationPermission, notify } from "@/lib/notifications";
+import { SplashScreen } from "@/components/aegis/SplashScreen";
+
 import { LogOut, Swords, RotateCcw } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -73,6 +75,11 @@ function SystemPage() {
   const [ambush, setAmbush] = useState<{ open: boolean; failed: number; hp: number; xp: number; date: string } | null>(null);
   const [externalLogs, setExternalLogs] = useState<LogEntry[]>([]);
   const lastResetDayRef = useRef<string>(new Date().toDateString());
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("aegis-splashed") !== "1";
+  });
+
 
   const pushLog = useCallback((kind: LogEntry["kind"], text: string) => {
     setExternalLogs(prev => [...prev, { ts: nowStamp(), kind, text }]);
