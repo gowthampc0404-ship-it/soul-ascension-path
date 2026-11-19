@@ -22,6 +22,10 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: "Aegis System · Solo Quest" },
       { name: "description", content: "Single-player gamified habit tracker. Arise, Hunter." },
+      { property: "og:title", content: "Aegis System · Solo Quest" },
+      { property: "og:description", content: "A single-player quest tracker for your daily progress." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: SystemPage,

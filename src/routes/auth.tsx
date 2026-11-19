@@ -8,6 +8,10 @@ export const Route = createFileRoute("/auth")({
     meta: [
       { title: "Aegis System · Hunter Registration" },
       { name: "description", content: "Awaken as a Hunter. Begin your solo quest." },
+      { property: "og:title", content: "Aegis System · Hunter Registration" },
+      { property: "og:description", content: "Sign in or create your Hunter profile to begin your solo quest." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   beforeLoad: async () => {

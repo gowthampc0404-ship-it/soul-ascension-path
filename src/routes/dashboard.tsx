@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ParticleBackground } from "@/components/aegis/ParticleBackground";
 import { NavBar } from "@/components/aegis/NavBar";
+import { includeMissedScheduledFailures } from "@/lib/quest-report";
 import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
@@ -10,6 +11,10 @@ export const Route = createFileRoute("/dashboard")({
     meta: [
       { title: "Crystal Matrix · Aegis System" },
       { name: "description", content: "Quest completion telemetry: weekly, monthly, yearly chronicles." },
+      { property: "og:title", content: "Crystal Matrix · Aegis System" },
+      { property: "og:description", content: "Review your cleared quests, failed quests, and activity history." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: DashboardPage,
@@ -19,7 +24,7 @@ type Range = "weekly" | "monthly" | "yearly";
 type Cat = "physical" | "mental" | "daily";
 type Mode = "combined" | "split";
 
-interface QuestRow { quest_id: string; category: Cat; scheduled_days: boolean[]; }
+interface QuestRow { quest_id: string; category: Cat; scheduled_days: boolean[]; created_at: string; }
 interface LogRow { quest_id: string; status: string; checked_at: string; }
 interface ProfileRow { current_streak: number; current_level: number; current_rank: string; hunter_name: string | null; }
 
@@ -84,12 +89,17 @@ function DashboardPage() {
     if (!userId) return;
     (async () => {
       const [{ data: q }, { data: l }, { data: p }] = await Promise.all([
-        supabase.from("quests").select("quest_id, category, scheduled_days").eq("user_id", userId).eq("is_archived", false),
+        supabase.from("quests").select("quest_id, category, scheduled_days, created_at").eq("user_id", userId).eq("is_archived", false),
         supabase.from("quest_logs").select("quest_id, status, checked_at").eq("user_id", userId).in("status", ["completed", "failed"]).gte("checked_at", iso(from)).lte("checked_at", iso(to)),
         supabase.from("profiles").select("current_streak, current_level, current_rank, hunter_name").eq("user_id", userId).single(),
       ]);
       setQuests((q || []) as QuestRow[]);
-      setLogs((l || []) as LogRow[]);
+      setLogs(includeMissedScheduledFailures(
+        (q || []) as QuestRow[],
+        (l || []) as LogRow[],
+        from,
+        to,
+      ));
       setProfile(p as ProfileRow);
     })();
   }, [userId, from, to]);
